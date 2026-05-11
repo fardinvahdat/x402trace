@@ -53,7 +53,7 @@ x402trace/
     ├── proxy/          — local HTTP proxy [shipped X402-10]
     ├── decoder/        — x402 message decoding + structured logger [shipped X402-11]
     ├── chain/          — Base RPC client (viem) [shipped X402-12]
-    ├── reconciliation/ — timeout reconciliation engine [X402-13]
+    ├── reconciliation/ — timeout reconciliation engine [shipped X402-13]
     └── cli/            — CLI entry point [X402-14]
 ```
 
