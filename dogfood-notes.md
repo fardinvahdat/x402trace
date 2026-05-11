@@ -274,43 +274,121 @@ This is the **canonical proof of the rig** — every layer (client → server �
 
 ## Failure modes
 
-> Five deliberate failures, one block each. To be filled in by X402-4. Structure is identical for every failure so the eventual synthesis is mechanical.
+> Five deliberate failures, one block each. Filled in by X402-4 ([docs/X402-4-failure-modes](https://github.com/fardinvahdat/x402trace/tree/docs/X402-4-failure-modes)). Structure is identical for every failure so the eventual synthesis is mechanical.
+>
+> All five are reproducible via `pnpm dogfood:failure-modes <1|2|3|4|5|all>` ([scripts/failure-modes.ts](./scripts/failure-modes.ts)). Each scenario spins up its own in-process Hono server on a random port so config tweaks don't pollute the default dev-server. Real facilitator at `https://x402.org/facilitator` is used for #1–#4; #5 points at a dead URL on purpose.
 
 ### 1. Wrong chain ID
 
-- **What I tried:** _TBD_
+- **What I tried:** Sign a valid base-sepolia payment, then mutate the encoded payload's `network` field from `"base-sepolia"` to `"avalanche-fuji"` before sending the `X-PAYMENT` header. Server only advertises base-sepolia. *(First tried: pass a wallet keyed for avalanche-fuji to `x402-fetch`. Result: 200. x402-fetch signs against the requirements' chain id regardless of wallet chain, so the wallet-chain mismatch is invisible at the protocol level. Cost me $0.001 USDC to learn this.)*
 - **Server error:**
   ```
-  TBD
+  HTTP 402
+  {
+    "error": "Unable to find matching payment requirements",
+    "accepts": [ { "scheme": "exact", "network": "base-sepolia", "payTo": "0xADEeaf…B895", ... } ],
+    "x402Version": 1
+  }
   ```
-- **Client error:**
-  ```
-  TBD
-  ```
-- **Facilitator error:**
-  ```
-  TBD
-  ```
-- **Where the error surfaced:** _TBD_
-- **Was it actionable from the message alone?** _TBD_
-- **Time to diagnose:** _TBD (be honest)_
-- **What would have helped:** _TBD_
+- **Client error:** none — the request returned 402 cleanly; `x402-fetch` propagated the 402 body as a normal response.
+- **Facilitator error:** not reached. Server's `findMatchingPaymentRequirements` rejected the payment before any `/verify` call.
+- **Where the error surfaced:** Server (`paymentMiddleware` in `x402-hono`, before facilitator dispatch).
+- **Was it actionable from the message alone?** No. "Unable to find matching payment requirements" tells you *something* mismatched, but you have to diff your sent payload against the `accepts` array yourself to find that it was the network. With multiple fields involved (scheme, network, payTo, asset) this is real work in production.
+- **Time to diagnose:** ~5 minutes on the first attempt, because the obvious approach (pass a wrong-chain wallet to `x402-fetch`) didn't actually trigger any error — it succeeded and spent USDC. Once I realized the spec validates at submission time, not signing time, the mutate-after-sign trick was 30 seconds.
+- **What would have helped:** Server error body should name the mismatching field(s) — e.g., `"mismatch": { "field": "network", "sent": "avalanche-fuji", "accepted": ["base-sepolia"] }`. Bonus: a CLI like `x402trace explain-mismatch <captured-402>` could do the diff offline.
 
 ### 2. Expired validBefore / maxTimeoutSeconds
 
-_TBD — same structure_
+- **What I tried:** Server config sets `maxTimeoutSeconds: -3600` on the protected route. The 402 challenge is emitted with `maxTimeoutSeconds: -3600`, x402-fetch dutifully builds an EIP-3009 authorization with `validBefore = now - 3600s`, signs it, sends it. Facilitator's `/verify` rejects with a typed reason.
+- **Server error:**
+  ```
+  HTTP 402
+  {
+    "error": "invalid_exact_evm_payload_authorization_valid_before",
+    "accepts": [ { … "maxTimeoutSeconds": -3600, … } ],
+    "payer": "0xADEeaf70FE6fcBD42D926E4159c25d7fc85eB895",
+    "x402Version": 1
+  }
+  ```
+  (The string `invalid_exact_evm_payload_authorization_valid_before` is one of the spec's enumerated `ErrorReasons` in `x402/types`.)
+- **Client error:** none. `x402-fetch` did NOT validate the negative timeout client-side — it signed and sent without complaint.
+- **Facilitator error:** `invalid_exact_evm_payload_authorization_valid_before` (returned in the verify response body; status 200 from facilitator, but `isValid: false`).
+- **Where the error surfaced:** Facilitator's `/verify`, then surfaced verbatim by the server in its 402 body.
+- **Was it actionable from the message alone?** Mostly yes — the enumerated reason names the field exactly. But the user has to know what `validBefore` means in EIP-3009 to act on it; a developer dropping in on x402 for the first time wouldn't.
+- **Time to diagnose:** 30 seconds. The reason string is precise.
+- **What would have helped:** Include the actual `validBefore` timestamp and the facilitator's current time in the error body — e.g., `"validBefore": "1715472000", "now": "1715475600", "expiredBySeconds": 3600`. Lets a debugger render "your authorization expired 1 hour ago" without the user knowing about EIP-3009. Also: client-side guard in `x402-fetch` that rejects negative `maxTimeoutSeconds` *before* signing would catch this at the source.
 
 ### 3. Insufficient USDC balance
 
-_TBD — same structure_
+- **What I tried:** Server config sets `price: "$100.00"` on the protected route. Payer wallet has ~$1 USDC. Bumped `x402-fetch`'s `maxValue` parameter to `200_000_000n` (above the $100 requirement) so the client-side cap wouldn't short-circuit before the facilitator could check on-chain.
+- **Server error:**
+  ```
+  HTTP 402
+  {
+    "error": "invalid_exact_evm_insufficient_balance",
+    "accepts": [ { … "maxAmountRequired": "100000000", … } ],
+    "payer": "0xADEeaf70FE6fcBD42D926E4159c25d7fc85eB895",
+    "x402Version": 1
+  }
+  ```
+- **Client error:** none. Signed normally; facilitator rejected.
+- **Facilitator error:** `invalid_exact_evm_insufficient_balance`.
+- **Where the error surfaced:** Facilitator's `/verify` (on-chain balance probe), echoed by server.
+- **Was it actionable from the message alone?** Yes for the high-level cause; no for the gap. Tells you "you don't have enough" but not by how much. In a real app where the price is dynamic, this is the difference between a useful retry-after-funding hint and a generic failure.
+- **Time to diagnose:** 30 seconds. Reason string is unambiguous.
+- **What would have helped:** Include the wallet's current balance and the shortfall — e.g., `"balanceUSDC": "1000000", "requiredUSDC": "100000000", "shortfallUSDC": "99000000"`. x402trace's wedge candidate (pre-flight wallet check before signing) lives directly in this gap: warn the user *before* the signing roundtrip when balance < requested.
 
 ### 4. Malformed signature
 
-_TBD — same structure_
+- **What I tried:** Sign a payment normally with `exact.evm.createPayment`, then flip the last byte of the EIP-3009 signature (XOR `0xff`) to produce a same-length, same-format hex string that recovers to a different address. Re-encode as base64 X-PAYMENT and send.
+  - Original signature: `0x8b90032bc00b55ab011675875592dc5ed6b39bb915ff23c316ed82f33661ab8b612642a5ec8e5be25029d08728a5d8fa24cbcbf453730a0f289e68168b7a45481c`
+  - Mangled signature: `0x8b90032bc00b55ab011675875592dc5ed6b39bb915ff23c316ed82f33661ab8b612642a5ec8e5be25029d08728a5d8fa24cbcbf453730a0f289e68168b7a4548e3` (last byte `1c → e3`)
+- **Server error:**
+  ```
+  HTTP 402
+  {
+    "error": "invalid_exact_evm_signature",
+    "accepts": [ … ],
+    "payer": "0xADEeaf70FE6fcBD42D926E4159c25d7fc85eB895",
+    "x402Version": 1
+  }
+  ```
+- **Client error:** none (we bypassed `x402-fetch` for this one and hand-crafted the request).
+- **Facilitator error:** `invalid_exact_evm_signature`.
+- **Where the error surfaced:** Facilitator's `/verify`. The server's `paymentMiddleware` parses and forwards; the facilitator's signature-recovery step rejects.
+- **Was it actionable from the message alone?** Half-actionable. It correctly identifies "signature is the problem," but the `payer` echoed in the body is the *claimed* address (`from` field in the authorization), not the *recovered* address from the signature. So a developer staring at this can't tell whether (a) the claimed `from` was wrong, (b) the wrong private key signed, or (c) the signature bytes were corrupted in transit.
+- **Time to diagnose:** ~1 minute. The reason string is clear about *which* component is broken, but the misleading `payer` field would slow real debugging where the cause isn't already known.
+- **What would have helped:** Include the recovered address next to the claimed one — `"claimedPayer": "0xADEe…", "recoveredFromSignature": "0xCD12…"`. Side-by-side makes the three sub-cases instantly distinguishable. This is exactly the kind of decode that an x402trace `inspect` command should do offline against a captured 402.
 
 ### 5. Facilitator unavailable
 
-_TBD — same structure_
+- **What I tried:** Server points `FACILITATOR_URL` at `http://127.0.0.1:9` — TCP port 9 is reserved (`discard`), and undici's `fetch` refuses sub-1024 ports outright. So the verify call fails *before* even attempting the connection.
+- **Server error (response body):**
+  ```
+  HTTP 402
+  {
+    "error": "fetch failed",
+    "accepts": [ … ],
+    "x402Version": 1
+  }
+  ```
+- **Server error (console stack):**
+  ```
+  Payment verification failed: TypeError: fetch failed
+      at node:internal/deps/undici/undici:13484:13
+      ...
+      at async verify2 (node_modules/.../x402/src/verify/useFacilitator.ts:52:17)
+      at async paymentMiddleware2 (node_modules/.../x402-hono/src/index.ts:287:28)
+    [cause]: Error: bad port
+        at makeNetworkError (node:internal/deps/undici/undici:9251:35)
+        ...
+  ```
+- **Client error:** none — client sees a 402 with `"error": "fetch failed"` and no other context. Indistinguishable from a real protocol error from the response alone.
+- **Facilitator error:** N/A (no facilitator listening).
+- **Where the error surfaced:** Server console (full stack with `[cause]: bad port`). Server response body strips the cause and emits only `"error": "fetch failed"`.
+- **Was it actionable from the message alone?** From the **client**: no — "fetch failed" could mean a hundred things, including legitimate facilitator-side errors. From the **server console**: yes if you read the stack, since `cause: bad port` and the URL is implicit from the env. But operators rarely tail server logs in production.
+- **Time to diagnose:** ~5 minutes if you don't have server console access; ~30 seconds if you do. The asymmetry is the problem.
+- **What would have helped:** Server error body should include (a) which URL it was trying to reach and (b) the underlying network/cause if any — e.g., `"facilitatorUrl": "http://127.0.0.1:9", "facilitatorError": "fetch failed: bad port"`. Even a structured `"facilitatorUnreachable": true` flag would let clients distinguish "your payment was rejected" from "we couldn't even ask." This is a high-signal failure for the v0.1 reconciliation engine — when facilitator times out and the on-chain tx may still settle (the canonical x402 issue #1062 case), the client needs to know the verify call never returned a real answer.
 
 ---
 
