@@ -20,6 +20,7 @@
     "dogfood:server": "tsx scripts/dev-server.ts",
     "dogfood:client": "tsx scripts/dogfood-client.ts",
     "dogfood:mock-facilitator": "tsx scripts/mock-facilitator.ts",
+    "dogfood:failure-modes": "tsx scripts/failure-modes.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:unit": "vitest run tests/unit",
