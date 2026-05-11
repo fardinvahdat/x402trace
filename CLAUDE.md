@@ -65,7 +65,7 @@ x402trace/
 | What is the wedge? | [SPEC.md](./SPEC.md) — v0.1 implementation spec (Week-2 output, [X402-8](https://vahdatfardin.atlassian.net/browse/X402-8)). Read first before any Week-3+ ticket. |
 | Why this approach? | [DECISIONS.md](./DECISIONS.md) |
 | What pain are we solving? | [dogfood-notes.md](./dogfood-notes.md) — **start with § [Top painful moments](./dogfood-notes.md#top-painful-moments-synthesized---x402-6) and § [Wedge candidates](./dogfood-notes.md#wedge-candidates) (the X402-6 synthesis: 9 ranked pains + 5 candidate wedges)** |
-| How do components fit together? | [ARCHITECTURE.md](./ARCHITECTURE.md) |
+| How do components fit together? | [ARCHITECTURE.md](./ARCHITECTURE.md) — 5 components (Proxy / Decoder / Chain / Reconciliation / CLI), the TypeScript interfaces at the boundaries, the JSONL record format. Read before any build ticket in X402-10..14. |
 | How do I test? | [TESTING.md](./TESTING.md) |
 
 ## Branching strategy
