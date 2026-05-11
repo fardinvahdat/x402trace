@@ -107,23 +107,18 @@ content-type: application/json
 - Facilitator at `x402.org/facilitator` accepts the signature (no signature-verification error) and progresses to on-chain balance check
 - Failure path is structured JSON — exactly the shape x402trace will need to surface to users
 
-🟡 **Pending: 200 settlement on a funded wallet.**
+🟡 **Originally pending: 200 settlement on a funded wallet** — _resolved 2026-05-12. See "Real-facilitator green-path capture" below._
 
-The throwaway payer wallet `0xADEeaf70FE6fcBD42D926E4159c25d7fc85eB895` is empty on Base Sepolia. Circle's faucet (`faucet.circle.com`) gates on a mainnet-ETH balance, which this wallet does not have. Two paths to unblock:
-
-1. Use the **Coinbase CDP Base Sepolia faucet** (less gated; requires a CDP account but no mainnet ETH).
-2. Send a few testnet USDC from another funded wallet.
-
-After funding, re-run `pnpm dogfood:client` and expect `paid GET -> 200` with an `x-payment-response` header carrying the settlement transaction hash. Capture that here under "Setup → funded run".
+The throwaway payer wallet `0xADEeaf70FE6fcBD42D926E4159c25d7fc85eB895` was empty on Base Sepolia at the time of the first run. Circle's faucet (`faucet.circle.com`) gated on a mainnet-ETH balance, which this wallet did not have. Two paths considered: Coinbase CDP faucet (also gated by phone-verification, see below), or a community drip. The drip path eventually came through.
 
 ### Wedge implications (already useful)
 
 - The facilitator's `invalid_exact_evm_insufficient_balance` error is a real `accepts`-plus-`payer`-plus-`error` envelope. A debugger like x402trace must be able to decode this shape on the failure path, not just the happy path. Adding this to the failure-mode fixtures (X402-4 #3, "Insufficient USDC balance") is essentially free now.
 - The facilitator does **not** return any indication of *which* on-chain check failed (balance vs. allowance vs. nonce vs. timing). x402trace can add value by cross-checking the user's actual on-chain state when this error fires — first concrete dogfood-pain data point for the wedge ([X402-7](https://vahdatfardin.atlassian.net/browse/X402-7)).
 
-### Funding the testnet wallet — what didn't work (2026-05-11)
+### Funding the testnet wallet — what didn't work (2026-05-11; resolved 2026-05-12)
 
-Both standard faucets are inaccessible to this engineer's setup, so the canonical real-facilitator capture is parked as a follow-up:
+Three standard faucet paths were all blocked. Wallet was eventually funded via a non-faucet route (community / other source) on 2026-05-12 — Basescan confirms USDC at [`0xADEeaf...B895`](https://sepolia.basescan.org/token/0x036cbd53842c5426634e7929541ec2318f3dcf7e?a=0xADEeaf70FE6fcBD42D926E4159c25d7fc85eB895).
 
 | Faucet | Result |
 | --- | --- |
@@ -131,13 +126,7 @@ Both standard faucets are inaccessible to this engineer's setup, so the canonica
 | Coinbase Developer Platform (`portal.cdp.coinbase.com/products/faucet`) | Blocked — requires **mobile-phone verification** during signup. No phone number available. |
 | Coinbase consumer faucet (`coinbase.com/faucets/...`) | Same mobile-phone gate. |
 
-This is the kind of friction the x402 ecosystem itself struggles with, and worth recording as a real onboarding pain point — file under "things that block builders even before they write a line of code."
-
-Follow-up paths (anyone with a teammate / Discord access can unblock):
-
-- Ask someone in the [x402 Discord](https://discord.gg/x402) or [Coinbase Developer Discord](https://discord.gg/cdp) for a community drip of Base Sepolia USDC to `0xADEeaf70FE6fcBD42D926E4159c25d7fc85eB895`.
-- Have any teammate with mainnet ETH claim from Circle's faucet and forward.
-- Once funded, drop `FACILITATOR_URL=https://x402.org/facilitator` back in `.env`, run `pnpm dogfood:server` + `pnpm dogfood:client`, and append the resulting transaction hash here under "Setup → funded run".
+This is the kind of friction the x402 ecosystem itself struggles with, and worth recording as a real onboarding pain point — file under "things that block builders even before they write a line of code." A debugger like x402trace can't fix the faucet walls, but it can pre-flight the wallet state (USDC balance, allowance) and tell the user **before** they ship code that they will hit `invalid_exact_evm_insufficient_balance` at runtime.
 
 ### Mock-facilitator green-path capture (2026-05-11)
 
@@ -244,6 +233,40 @@ The `resource` URL contains `?...all=weather` because Vercel's catch-all route `
 | Circle's USDC faucet, CDP faucet, and Coinbase consumer faucet all gated me out (mainnet ETH and/or phone verification) | Faucet anti-sybil walls assume mainstream onboarding paths | Documented above; pending teammate/Discord drip to fund the wallet for the real-facilitator 200 capture |
 
 Each of those is a real onboarding paper-cut that an x402-tracing tool can either surface, warn about, or pre-flight against in v0.1+.
+
+### Real-facilitator green-path capture (2026-05-12)
+
+Wallet `0xADEeaf70FE6fcBD42D926E4159c25d7fc85eB895` was funded with Base Sepolia USDC. `pnpm dogfood:client` was run with the **production** environment — pointing at the **deployed Vercel URL** and the **official `https://x402.org/facilitator`** (i.e., no mocks anywhere in the chain):
+
+```bash
+$ DOGFOOD_SERVER_URL=https://x402trace-dogfood-git-feat-x402-3-ce2524-fardinvahdats-projects.vercel.app \
+  FACILITATOR_URL=https://x402.org/facilitator \
+  pnpm dogfood:client
+
+[client] target: https://x402trace-dogfood-git-feat-x402-3-ce2524-fardinvahdats-projects.vercel.app/api/weather
+[client] payer:  0xADEeaf70FE6fcBD42D926E4159c25d7fc85eB895
+[client] chain:  Base Sepolia (84532)
+[client] unpaid GET -> 402
+[client] 402 challenge body: { …well-formed x402 v1 challenge, payTo + asset + maxAmountRequired all correct… }
+[client] paid GET   -> 200
+[client] settlement: {
+  "success": true,
+  "transaction": "0x8b53a04d71cd7dcc35fdf3682ae173758a76213db4ec1abae3e846b8c12b3428",
+  "network": "base-sepolia",
+  "payer": "0xADEeaf70FE6fcBD42D926E4159c25d7fc85eB895"
+}
+[client] response body: {
+  "endpoint": "/api/weather",
+  "network": "base-sepolia",
+  "priceUsd": "$0.001",
+  "servedAt": "2026-05-11T21:38:45.909Z",
+  "note": "Paid response from x402trace dogfood server on Base Sepolia."
+}
+```
+
+On-chain settlement: [`0x8b53a04d71cd7dcc35fdf3682ae173758a76213db4ec1abae3e846b8c12b3428`](https://sepolia.basescan.org/tx/0x8b53a04d71cd7dcc35fdf3682ae173758a76213db4ec1abae3e846b8c12b3428). Real Ethereum-shaped hash (compare to the mock's pattern-marked `0xffff…0001`).
+
+This is the **canonical proof of the rig** — every layer (client → server → real facilitator → on-chain transfer → server settlement header → client decode) ran end-to-end, against production endpoints, with a real on-chain transfer. The 200-flow acceptance criterion is satisfied.
 
 ---
 
