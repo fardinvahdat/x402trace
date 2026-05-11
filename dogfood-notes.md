@@ -186,7 +186,9 @@ This same flow is asserted automatically by `tests/integration/dogfood-paid-flow
 
 ### Public Vercel deploy (2026-05-12)
 
-**URL (stable branch alias):** [`https://x402trace-dogfood-git-feat-x402-3-ce2524-fardinvahdats-projects.vercel.app`](https://x402trace-dogfood-git-feat-x402-3-ce2524-fardinvahdats-projects.vercel.app)
+**Production URL (stable, v1 branch alias):** [`https://x402trace-dogfood-git-v1-fardinvahdats-projects.vercel.app`](https://x402trace-dogfood-git-v1-fardinvahdats-projects.vercel.app)
+
+This is the canonical URL going forward. The initial PR-2 preview deploy ran on the now-deleted `feat/X402-3-dogfood-setup` branch alias; after PR-2 was merged, Vercel's production branch was switched from `main` to `v1` and a fresh production deploy was cut. The probe and client output below was captured against the original preview alias on 2026-05-12 but is equivalent to what the production alias serves today — the build is identical commit-for-commit. A second production capture against the v1 alias confirmed the paid flow at settlement tx [`0xc5758bf2…6cbf`](https://sepolia.basescan.org/tx/0xc5758bf2a0f8668a5613aae125a7ab529ef90ce96760020a1ff73309788c6cbf).
 
 `vercel.json` configures `outputDirectory: "public"`, declares `api/**/*.ts` as serverless functions explicitly (necessary — without this, Vercel was treating the project as static-only and the `api/` directory was never bundled), and pins `installCommand: "pnpm install --frozen-lockfile"`. `api/[...all].ts` is a Node-style `(req, res)` handler that bridges to `app.fetch()`; it deliberately avoids referencing Web Fetch global types by name because Vercel's serverless build env resolves those as empty shells (while our local tsconfig has them via `@types/node@22`).
 
