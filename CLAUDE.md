@@ -48,14 +48,16 @@ x402trace/
 ├── dogfood-notes.md    — running journal of pain encountered while using x402
 ├── .env.example        — config template
 ├── package.json
-├── tsconfig.json       — created in X402-10
-└── src/                — appears in Week 3 (X402-10+)
-    ├── proxy/          — local HTTP proxy
-    ├── decoder/        — x402 message decoding + logging
-    ├── chain/          — Base RPC client
-    ├── reconciliation/ — timeout reconciliation engine
-    └── cli/            — CLI entry point
+├── tsconfig.json       — minimal strict ESM NodeNext (added pre-X402-10 to unblock the pipeline)
+└── src/
+    ├── proxy/          — local HTTP proxy [shipped X402-10]
+    ├── decoder/        — x402 message decoding + structured logger [shipped X402-11]
+    ├── chain/          — Base RPC client [X402-12]
+    ├── reconciliation/ — timeout reconciliation engine [X402-13]
+    └── cli/            — CLI entry point [X402-14]
 ```
+
+There is also a non-published `src/dogfood/` (X402-3 test rig — Hono server + mock facilitator + http-adapter) used only by tests and `pnpm dogfood:*` scripts.
 
 ## Where to look first
 
@@ -66,6 +68,7 @@ x402trace/
 | Why this approach? | [DECISIONS.md](./DECISIONS.md) |
 | What pain are we solving? | [dogfood-notes.md](./dogfood-notes.md) — **start with § [Top painful moments](./dogfood-notes.md#top-painful-moments-synthesized---x402-6) and § [Wedge candidates](./dogfood-notes.md#wedge-candidates) (the X402-6 synthesis: 9 ranked pains + 5 candidate wedges)** |
 | How do components fit together? | [ARCHITECTURE.md](./ARCHITECTURE.md) — 5 components (Proxy / Decoder / Chain / Reconciliation / CLI), the TypeScript interfaces at the boundaries, the JSONL record format. Read before any build ticket in X402-10..14. |
+| What's in the JSONL log on disk? | [src/decoder/schema.md](./src/decoder/schema.md) — authoritative shape of every `event:` discriminant the decoder emits. The file IS the API; breaking the shape requires a new ADR. |
 | How do I test? | [TESTING.md](./TESTING.md) |
 
 ## Branching strategy
@@ -98,6 +101,7 @@ x402trace/
 
 - When starting a session: read CLAUDE.md, [SPEC.md](./SPEC.md), and the Jira ticket linked in the branch name.
 - When the work touches feature design, wedge scope, or "should we build X": read [dogfood-notes.md § Top painful moments](./dogfood-notes.md#top-painful-moments-synthesized---x402-6) first. That table is the project's grounded pain inventory; every proposed feature should map back to at least one ranked pain there.
+- When the work touches the JSONL on-disk format (anything that reads or writes events): read [src/decoder/schema.md](./src/decoder/schema.md) first. Don't add a new `event:` discriminant without an ADR; downstream consumers (reconciliation, future `x402trace reconcile --log`, v0.2 features) all depend on it.
 - When stuck on x402 protocol details: read the actual `x402` npm package source. Don't guess.
 - When suggesting a refactor: propose it in a comment first, get user confirmation, then change code.
 - When tests are hard to write for a piece of code: that's a design signal. Refactor for testability first.
