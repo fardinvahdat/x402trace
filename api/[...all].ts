@@ -77,7 +77,6 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     console.log(`[req] Hono returned status=${webRes.status} in ${Date.now() - t0}ms`);
 
     res.statusCode = webRes.status;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     webRes.headers.forEach((v: string, k: string) => res.setHeader(k, v));
     if (webRes.body) {
       Readable.fromWeb(webRes.body).pipe(res);
