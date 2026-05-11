@@ -1,17 +1,46 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
-import { createDogfoodApp } from "../src/dogfood/app.js";
-import { loadServerConfig } from "../src/dogfood/config.js";
 
-// Build the Hono app once per cold start.
-const app = createDogfoodApp(loadServerConfig());
+// Module-level initialization wrapped so any failure surfaces in the
+// response body instead of hanging Vercel until invocation timeout.
+let initError: Error | null = null;
+let appFetch: ((req: Request) => Promise<Response>) | null = null;
 
-// Vercel Node runtime expects an (req, res) => void handler. We bridge that to
-// Hono's Web Fetch API surface. Using hono/vercel's `handle` here was returning
-// the Edge-style (req: Request) => Response signature, which Vercel's Node
-// runtime did not recognize — the function hung until FUNCTION_INVOCATION_TIMEOUT.
+try {
+  console.log("[init] loading config and Hono app");
+  const { createDogfoodApp } = await import("../src/dogfood/app.js");
+  const { loadServerConfig } = await import("../src/dogfood/config.js");
+  const config = loadServerConfig();
+  console.log("[init] config loaded:", {
+    network: config.network,
+    receiverAddress: config.receiverAddress,
+    protectedPath: config.protectedPath,
+  });
+  const app = createDogfoodApp(config);
+  appFetch = async (req: Request) => app.fetch(req);
+  console.log("[init] Hono app ready");
+} catch (err) {
+  initError = err instanceof Error ? err : new Error(String(err));
+  console.error("[init] failed:", initError);
+}
+
 export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  const t0 = Date.now();
+  console.log(`[req] ${req.method} ${req.url}`);
   try {
+    if (initError || !appFetch) {
+      res.statusCode = 500;
+      res.setHeader("content-type", "application/json");
+      res.end(
+        JSON.stringify({
+          error: "initialization_failed",
+          message: initError?.message ?? "appFetch is null",
+          stack: initError?.stack,
+        }),
+      );
+      return;
+    }
+
     const host = (req.headers["x-forwarded-host"] as string) ?? req.headers.host ?? "localhost";
     const proto = (req.headers["x-forwarded-proto"] as string) ?? "https";
     const url = `${proto}://${host}${req.url ?? "/"}`;
@@ -31,7 +60,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       init.duplex = "half";
     }
 
-    const webRes = await app.fetch(new Request(url, init));
+    console.log("[req] dispatching to Hono", { url });
+    const webRes = await appFetch(new Request(url, init));
+    console.log(`[req] Hono returned status=${webRes.status} in ${Date.now() - t0}ms`);
+
     res.statusCode = webRes.status;
     webRes.headers.forEach((v, k) => res.setHeader(k, v));
     if (webRes.body) {
@@ -40,11 +72,17 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
       res.end();
     }
   } catch (err) {
-    console.error("api/[...all].ts handler error:", err);
+    console.error("[req] handler error:", err);
     if (!res.headersSent) {
       res.statusCode = 500;
       res.setHeader("content-type", "application/json");
-      res.end(JSON.stringify({ error: "Internal Server Error" }));
+      res.end(
+        JSON.stringify({
+          error: "handler_threw",
+          message: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+        }),
+      );
     } else {
       res.end();
     }
