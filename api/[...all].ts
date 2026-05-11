@@ -1,10 +1,18 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { Readable } from "node:stream";
 
-// Module-level initialization wrapped so any failure surfaces in the
-// response body instead of hanging Vercel until invocation timeout.
+// NOTE: Vercel's serverless function build invokes tsc with a lib/types set
+// where the global Web Fetch types (Request, Response, RequestInit, Headers)
+// resolve as empty shells, so any property access fails to type-check. Our
+// LOCAL tsconfig sees the full types via @types/node@22. To compile in both
+// places, this file deliberately avoids referencing those globals as named
+// types and works through `any`/`unknown` with runtime guards.
+//
+// Don't tighten the types here without re-running the Vercel build first.
+
 let initError: Error | null = null;
-let appFetch: ((req: Request) => Promise<Response>) | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let appFetch: ((req: any) => Promise<any>) | null = null;
 
 try {
   console.log("[init] loading config and Hono app");
@@ -17,7 +25,8 @@ try {
     protectedPath: config.protectedPath,
   });
   const app = createDogfoodApp(config);
-  appFetch = async (req: Request) => app.fetch(req);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  appFetch = async (req: any) => app.fetch(req);
   console.log("[init] Hono app ready");
 } catch (err) {
   initError = err instanceof Error ? err : new Error(String(err));
@@ -45,29 +54,33 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
     const proto = (req.headers["x-forwarded-proto"] as string) ?? "https";
     const url = `${proto}://${host}${req.url ?? "/"}`;
 
-    const headers = new Headers();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const HeadersCtor = (globalThis as any).Headers;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const RequestCtor = (globalThis as any).Request;
+    const headers = new HeadersCtor();
     for (const [name, value] of Object.entries(req.headers)) {
       if (Array.isArray(value)) headers.set(name, value.join(", "));
       else if (typeof value === "string") headers.set(name, value);
     }
 
-    const init: RequestInit & { duplex?: "half" } = {
-      method: req.method ?? "GET",
-      headers,
-    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const init: any = { method: req.method ?? "GET", headers };
     if (req.method && req.method !== "GET" && req.method !== "HEAD") {
-      init.body = Readable.toWeb(req) as unknown as ReadableStream;
+      init.body = Readable.toWeb(req);
       init.duplex = "half";
     }
 
     console.log("[req] dispatching to Hono", { url });
-    const webRes = await appFetch(new Request(url, init));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const webRes: any = await appFetch(new RequestCtor(url, init));
     console.log(`[req] Hono returned status=${webRes.status} in ${Date.now() - t0}ms`);
 
     res.statusCode = webRes.status;
-    webRes.headers.forEach((v, k) => res.setHeader(k, v));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    webRes.headers.forEach((v: string, k: string) => res.setHeader(k, v));
     if (webRes.body) {
-      Readable.fromWeb(webRes.body as never).pipe(res);
+      Readable.fromWeb(webRes.body).pipe(res);
     } else {
       res.end();
     }
