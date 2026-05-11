@@ -10,9 +10,9 @@ Canonical reference: [coinbase/x402 Issue #1062](https://github.com/coinbase/x40
 
 ## Status
 
-- **Phase:** Pre-v0.1 build
-- **Wedge:** Timeout reconciliation (tentative; confirmed in Week 2 via ADR-001)
-- **Timeline:** 6 weeks to v0.1
+- **Phase:** Pre-v0.1 build (Week 1 complete)
+- **Wedge:** **Local HTTP proxy + timeout-reconciliation engine.** Accepted 2026-05-12 in [ADR-001](./DECISIONS.md#adr-001-v01-wedge). Scope: Base Sepolia only, single facilitator profile (`x402.org/facilitator`), `exact` EVM scheme only, detect-and-notify (no auto-refund).
+- **Timeline:** 6 weeks to v0.1 (~5 weeks remaining)
 - **Repo:** https://github.com/fardinvahdat/x402trace
 - **Jira:** https://vahdatfardin.atlassian.net/jira/software/projects/X402
 - **Notion plan:** https://www.notion.so/35c03c62b2638159a5e2d1ecaac5ff0b
