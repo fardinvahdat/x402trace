@@ -121,6 +121,80 @@ After funding, re-run `pnpm dogfood:client` and expect `paid GET -> 200` with an
 - The facilitator's `invalid_exact_evm_insufficient_balance` error is a real `accepts`-plus-`payer`-plus-`error` envelope. A debugger like x402trace must be able to decode this shape on the failure path, not just the happy path. Adding this to the failure-mode fixtures (X402-4 #3, "Insufficient USDC balance") is essentially free now.
 - The facilitator does **not** return any indication of *which* on-chain check failed (balance vs. allowance vs. nonce vs. timing). x402trace can add value by cross-checking the user's actual on-chain state when this error fires — first concrete dogfood-pain data point for the wedge ([X402-7](https://vahdatfardin.atlassian.net/browse/X402-7)).
 
+### Funding the testnet wallet — what didn't work (2026-05-11)
+
+Both standard faucets are inaccessible to this engineer's setup, so the canonical real-facilitator capture is parked as a follow-up:
+
+| Faucet | Result |
+| --- | --- |
+| Circle (`faucet.circle.com`) | Blocked — requires non-zero **mainnet ETH** balance to claim. Wallet has none. |
+| Coinbase Developer Platform (`portal.cdp.coinbase.com/products/faucet`) | Blocked — requires **mobile-phone verification** during signup. No phone number available. |
+| Coinbase consumer faucet (`coinbase.com/faucets/...`) | Same mobile-phone gate. |
+
+This is the kind of friction the x402 ecosystem itself struggles with, and worth recording as a real onboarding pain point — file under "things that block builders even before they write a line of code."
+
+Follow-up paths (anyone with a teammate / Discord access can unblock):
+
+- Ask someone in the [x402 Discord](https://discord.gg/x402) or [Coinbase Developer Discord](https://discord.gg/cdp) for a community drip of Base Sepolia USDC to `0xADEeaf70FE6fcBD42D926E4159c25d7fc85eB895`.
+- Have any teammate with mainnet ETH claim from Circle's faucet and forward.
+- Once funded, drop `FACILITATOR_URL=https://x402.org/facilitator` back in `.env`, run `pnpm dogfood:server` + `pnpm dogfood:client`, and append the resulting transaction hash here under "Setup → funded run".
+
+### Mock-facilitator green-path capture (2026-05-11)
+
+Because the real-facilitator path is funding-blocked, X402-3 also ships a **local mock facilitator** ([src/dogfood/mock-facilitator.ts](./src/dogfood/mock-facilitator.ts)) that implements the v1 `POST /verify` and `POST /settle` endpoints with canned-success responses. This proves the server/client/middleware wiring end-to-end without on-chain USDC. It is **not** a substitute for the real-facilitator capture (acceptance criterion still pending); it is the test harness that `TESTING.md` recommends for integration testing.
+
+Both apps were started locally, then `pnpm dogfood:client` ran against the dogfood server with `FACILITATOR_URL=http://localhost:4402`:
+
+**Dogfood server log:**
+
+```
+x402trace dogfood server listening on http://localhost:3402
+  receiver:    0xADEeaf70FE6fcBD42D926E4159c25d7fc85eB895
+  network:     base-sepolia
+  facilitator: http://localhost:4402
+  protected:   GET /api/weather @ $0.001
+[2026-05-11T20:23:26.579Z] GET /api/weather -> 402   9ms accept=*/* x-payment:none
+[2026-05-11T20:23:26.587Z] GET /api/weather -> 402   1ms accept=*/* x-payment:none
+[2026-05-11T20:23:26.619Z] GET /api/weather -> 200  23ms accept=*/* x-payment:present x-payment-response:present
+```
+
+**Mock facilitator log:**
+
+```
+x402trace MOCK facilitator listening on http://localhost:4402
+  WARNING: always approves. Local test harness only — do NOT deploy.
+[2026-05-11T20:23:26.612Z] mock-facilitator POST /verify -> 200 5ms
+[2026-05-11T20:23:26.618Z] mock-facilitator POST /settle -> 200 1ms
+```
+
+**Client output:**
+
+```
+[client] target: http://localhost:3402/api/weather
+[client] payer:  0xADEeaf70FE6fcBD42D926E4159c25d7fc85eB895
+[client] chain:  Base Sepolia (84532)
+[client] unpaid GET -> 402
+[client] 402 challenge body: { … same as above … }
+[client] paid GET   -> 200
+[client] settlement: {
+  "success": true,
+  "transaction": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffff00000001",
+  "network": "base-sepolia",
+  "payer": "0xADEeaf70FE6fcBD42D926E4159c25d7fc85eB895"
+}
+[client] response body: {
+  "endpoint": "/api/weather",
+  "network": "base-sepolia",
+  "priceUsd": "$0.001",
+  "servedAt": "2026-05-11T20:23:26.616Z",
+  "note": "Paid response from x402trace dogfood server on Base Sepolia."
+}
+```
+
+The `transaction` field is a synthetic, mock-emitted hash (notice the `ffff…0001` pattern) — clearly not a real Base Sepolia tx. That's intentional: it's how you'll know in a glance whether you're looking at mock or real-facilitator data.
+
+This same flow is asserted automatically by `tests/integration/dogfood-paid-flow.test.ts` and runs on every `pnpm test`.
+
 ---
 
 ## Failure modes
