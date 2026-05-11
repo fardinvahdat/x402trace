@@ -394,23 +394,98 @@ This is the **canonical proof of the rig** — every layer (client → server �
 
 ## Top painful moments (synthesized — [X402-6](https://vahdatfardin.atlassian.net/browse/X402-6))
 
-| Rank | Pain | Proposed feature | Difficulty (S/M/L) | Notes |
+Built from Week 1 outputs, ranked by **evidence weight** (count of independent reproductions + production-money impact + recency). Difficulty estimates assume a single engineer working full-time and inheriting the dogfood rig already shipped in X402-3.
+
+| Rank | Pain | Proposed x402trace feature | Difficulty | Evidence weight |
 | --- | --- | --- | --- | --- |
-| 1 | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
-| 2 | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
-| 3 | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
-| 4 | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
-| 5 | _TBD_ | _TBD_ | _TBD_ | _TBD_ |
+| 1 | **Facilitator timeout reconciliation** — facilitator times out on /verify or /settle, but the on-chain `transferWithAuthorization` actually settled. Wallet debited, server has no payment record, no recovery path. | `x402trace reconcile` — watch outbound facilitator calls + match against Base USDC `Transfer` events for the payer's EIP-3009 nonce. When verify/settle timed out but the nonce was consumed, surface a structured "settled-but-server-thinks-not" event. | L | **Highest.** Seed-set anchor (#1062 is the project's wedge target); X402-5 #1805 (settlement-proof replay; duplicate debits) is the inverse failure of the same gap; X402-4 F5 (server returns `"fetch failed"` on facilitator-down, no info on whether the on-chain leg ran). Real production money loss on the canonical case. |
+| 2 | **Bazaar indexing silently fails** — service settles on-chain multiple times via the CDP facilitator but never appears in `/discovery/resources` for 24h+. Filers post "+24h", "+48h" nudges and run their own probes. Five OPEN issues, no acknowledged root cause. | `x402trace bazaar-check` — given a service URL and a recent settlement tx, query CDP discovery API + Bazaar catalog + agentic.market and report indexing status. If not indexed, run the documented requirement checklist (`paymentPayload.resource` populated, `accepts[0]` shape rules, `extensions.bazaar` present, `EXTENSION-RESPONSES` received) and name which step failed. | M | **High and acute.** X402-5 #2112, #1982, #2162, #2156, #1461 — 5 OPEN issues, all from production services, all in the last 60 days, all with multi-team reproductions. Most acute *currently active* pain cluster. |
+| 3 | **Generic 402 with no error reason — root-cause-by-elimination debugging** — `/verify` rejects with `invalid_payload` and no `invalidMessage` field, OR the server-side 402 echoes `payer` as the *claimed* `from` rather than the *recovered* signer. Developers chase token domain metadata, EIP-712 versioning, wallet type (ERC-6492 vs EOA), and JWT-key encoding before finding the cause. | `x402trace inspect` — CLI that takes a captured 402 + payment payload and produces a local diagnostic: mismatch diff vs `accepts`, recovered-vs-claimed address, `validBefore` vs now, USDC balance vs `maxAmountRequired`, EIP-712 domain check against the asset contract on-chain. Offline-first, no facilitator call required. | M | **High.** X402-4 F1 (mismatch field unnamed), F4 (claimed-vs-recovered payer hidden); X402-5 #2255 (CDP generic 402), #2110 (ERC-6492 no invalidMessage), #1898 (3-cause debug chain over multiple days); seed-set #1065 cryptic `invalid_payload`. Pattern appears in 5+ X402-5 issues and every X402-4 failure. |
+| 4 | **Wallet-state pre-flight gap** — `insufficient_balance`, expired `validBefore`, and "wrong wallet kind" failures are all detectable *before* signing, but no SDK or tool currently does the check. Developer learns at runtime. | `x402trace doctor` — given a wallet address + service URL, pre-flight: USDC balance, allowance, EIP-3009 nonce status (consumed?), wallet kind (EOA / ERC-6492 / Smart Wallet), facilitator's supported kinds for this chain. Output: "you would succeed" / "you would fail because X" with the actionable fix. | M | **High.** X402-3 dogfooding (our wallet was empty, learned at runtime); X402-4 F3 (no shortfall in error body); seed-set #623 (Smart Wallet confusion); X402-5 #2110, #2184. Most likely demand from current x402 onboarding traffic. |
+| 5 | **Cross-facilitator drift — same payload, different verdict** — CDP, PayAI, and x402-rs accept/reject identical payloads differently. Spec says one thing, deployed facilitator does another. Headers documented but not emitted. | `x402trace lint --multi` — fire the same payment payload (or just the 402 challenge) against multiple facilitator URLs and diff the responses. Highlight cases where spec and behavior diverge, or where two facilitators disagree on the same payload. | M | **Medium-high.** Seed-set x402-rs #26 (signature handling); X402-5 #2184 (PayAI rejects what CDP accepts), #2207, #2112, #1982 (CDP omits documented `EXTENSION-RESPONSES`); the entire X402-5 spec-drift cluster (6 issues). Becomes more valuable as more facilitators ship. |
+| 6 | **Empty/silent 402 bodies break agent-led recovery** — autonomous agents parse the response body first; x402 puts payment instructions in headers and leaves the body as `{}`. Agents stop. The community filed [#1860 RFC for a diagnostic extension](https://github.com/x402-foundation/x402/issues/1860); it closed without acceptance. | `x402trace proxy` — sit in front of a paid service as a transparent HTTP proxy. Capture every 402-challenge + retry pair to JSONL. Optionally enrich the 402 body with the structured fields the RFC proposed, so downstream agents have something parseable. | M | **Medium.** X402-5 #1860 (community RFC, closed), #1677 (empty body, zero replies); X402-4's silent build failure on Vercel is the same anti-pattern at a different layer. Foundation for #1 (reconcile needs the proxy's logs). |
+| 7 | **SDK version drift across packages — silent breakage** — viem floor pins are too loose; `pnpm install --frozen-lockfile` resolves to 4 different viem versions across packages; new chains broken until lockfile manually bumped; paywall hardcodes 6 decimals and "USDC" label; default-asset lists drop entries between PRs. | `x402trace versions` — audit an x402-using project's installed dependency tree, report SDK version skew, known-bad version combinations, and chains that exist in newer viem than the bundled version. CI-friendly. | S | **Medium.** X402-5 #2241, #1971, #1979, #1972, #1919, #2035 — the entire spec-drift cluster. Pain is real but the audience is x402 SDK *consumers* doing lockfile maintenance, narrower than the runtime-failure audiences above. |
+| 8 | **Onboarding cliff — too many config knobs, scattered docs, faucets gated** — new integrators chase CAIP-2 IDs, token contract addresses, facilitator URLs, wallet kinds, JWT encoding, and USDC faucets across 5+ docs sources. The X402-3 dogfood deploy hit five separate sharp edges (wrong branch, missing `public/`, `hono/vercel` runtime mismatch, silent tsc failure, Preview auth gate) plus three blocked faucets (Circle, CDP, Coinbase consumer) before the rig was up. | `x402trace init` — interactive CLI scaffolder. Asks (chain, wallet type, host) → produces a working server + client + `.env` stub already wired for `x402trace proxy` / `x402trace inspect` consumption. Not a monapi competitor; the differentiator is "produces output that the rest of x402trace can read." | S | **Medium.** Seed-set #623, #1759 (lost user to Tempo); X402-3 self-evidence (5 deploy gotchas + 3 faucet walls); X402-5 #1692 (official quickstart returns 200 instead of 402). Adoption pain, not production pain — easier to ship but harder to monetize. |
+| 9 | **Replay / duplicate-debit risk under concurrency** — concurrent paid requests can share a single settlement proof; wallet gets debited multiple times and refunded later. Lifecycle hooks lack error isolation so a throwing hook turns a successful payment into a failed one server-side. | Extends `x402trace reconcile` (rank 1): track EIP-3009 nonces per payer; alert when a single nonce appears in multiple inbound requests or when a paid request was retried after the facilitator timed out. The "did I get charged twice for one operation?" question. | M (extends L) | **Medium.** X402-5 #1805 (5 concurrent → 1 settlement proof, real debits/refunds); #1826 (hook isolation); #1886 (idempotency questions on irreversible ops). Concurrency-class bugs are dangerous but rarely reproducible — needs the proxy + reconcile substrate. |
+
+---
+
+### Pain detail — for X402-7 weighting
+
+These rows assume **x402trace runs as a local CLI / proxy / daemon** (per the project's stated v0.1 mission), not a hosted SaaS. Each pain row is grounded in evidence we can re-read on demand: failure-mode captures in this file, GitHub issues in `x402-foundation/x402`, the Notion Validation evidence page.
+
+**Composability of features.** The proposed features aren't independent — they nest:
+
+- `x402trace proxy` (rank 6) is the **substrate** that records the data `reconcile` (rank 1) and `bazaar-check` (rank 2) match against.
+- `x402trace inspect` (rank 3) and `doctor` (rank 4) share most of the same spec-validation logic; one decodes a captured 402, the other generates a hypothetical one.
+- `x402trace versions` (rank 7) and `init` (rank 8) are CI-and-onboarding tools; they don't depend on the proxy.
+
+This means **a wedge that bundles ranks 1, 2, 6, plus 9** ships a cohesive observability story (the proxy captures everything; reconcile and bazaar-check explain the failures the proxy sees). A wedge that bundles ranks 3, 4, 7, 8 ships a cohesive **developer-tooling** story (CLIs that answer "why is this broken" and "what's wrong with my project").
 
 ---
 
 ## Wedge candidates
 
-_To be filled in by X402-6._
+Five candidates surfaced. **Not picking** — picked in [X402-7](https://vahdatfardin.atlassian.net/browse/X402-7). Each is sized so v0.1 ships in the remaining ~5 weeks.
 
-- **Candidate 1:** _TBD_
-- **Candidate 2:** _TBD_
-- **Candidate 3:** _TBD_
+### Candidate A: Timeout reconciliation engine (ranks 1, 9, with 6 as substrate)
+
+- **Scope:** `x402trace proxy` records all 402 / X-PAYMENT exchanges to a JSONL log. `x402trace reconcile` watches Base USDC `Transfer` events via RPC and matches them against pending facilitator-timed-out payments by EIP-3009 nonce. When a settled-but-server-thinks-not case is found, emit a structured record with the tx hash, the payer, the resource URL, and the recommended action (refund / credit / replay).
+- **Evidence:** Seed-set #1062 is the canonical case. X402-5 #1805 is the inverse failure (same observability gap, different symptom — duplicate debits). X402-4 F5 shows our own server can't distinguish facilitator-down from facilitator-rejected.
+- **Effort:** L. Needs proxy + RPC client + nonce-matching engine + tx-decoder. 4–5 weeks if scoped tight.
+- **Differentiation:** No competitor solves this end-to-end. xpay has spending controls but not reconciliation. PaySentry has timeout retry but no on-chain matching. The community-asked-for-this signal in [#1860](https://github.com/x402-foundation/x402/issues/1860) supports the demand-side.
+- **Risks:** L-effort in 5 weeks is tight; on-chain RPC complexity (rate limits, reorgs, event-filter gaps); needs a clear "what does the reconciliation do when it fires" answer (auto-refund? notify? log only?) — currently undecided.
+
+### Candidate B: Pre-flight + offline inspect (ranks 3, 4, 7)
+
+- **Scope:** `x402trace doctor <wallet> <service>` → pre-flight check before signing. `x402trace inspect <captured-402.json>` → decode a captured 402 and explain exactly why a payload would or did fail. `x402trace versions` → SDK skew audit. All offline-first, no facilitator dependency for the inspect path.
+- **Evidence:** X402-4 failures 1–4 all have the "would-have-helped" answer in this candidate. X402-5 spec-drift cluster (6 issues) is directly addressed by `versions`. Seed-set #623 and X402-5 #2110 ERC-6492 wallet-state pre-flight.
+- **Effort:** M total (3 tools, each S–M). 2–3 weeks if scoped tight.
+- **Differentiation:** x402lint (existing open-source) covers config validation only. No tool covers the wallet-state + payload-diff + dependency-skew triple. Offline-first is a real diff.
+- **Risks:** Three CLIs feels diffuse — "what does x402trace do?" answer becomes "five tools" instead of one sharp pitch. Harder to position vs. clean reconciliation story.
+
+### Candidate C: Bazaar discovery diagnostics (rank 2)
+
+- **Scope:** `x402trace bazaar-check <service>` → run the Bazaar indexing checklist. Report which of (5+ requirements) failed and link to the exact spec line. Optionally watch `/discovery/resources` and alert when a settled service finally indexes.
+- **Evidence:** X402-5 #2112, #1982, #2162, #2156, #1461 — 5 OPEN issues, the most acute *currently active* pain cluster. Multi-team reproductions. The community has visibly degraded patience on these threads (#2156: "this thread is a bunch of chatgpt bots talking to each other").
+- **Effort:** M. 2 weeks if scoped tight.
+- **Differentiation:** No existing tool checks Bazaar indexing specifically. EntRoute does verification probes; x402scan is an explorer; neither answers "why isn't *my* service indexed." Narrow but vocal audience.
+- **Risks:** Narrow scope might not sustain a v0.1 + v0.2 + v0.3 roadmap. If CDP fixes the underlying Bazaar issues, the tool's reason-to-exist evaporates. Single-vendor dependency (CDP discovery API).
+
+### Candidate D: Cross-facilitator drift dashboard (rank 5)
+
+- **Scope:** `x402trace compare --facilitators=cdp,payai,x402-rs <payload>` → fire the same payload at each facilitator, diff the responses, highlight where they disagree or where any one diverges from the spec.
+- **Evidence:** Seed-set x402-rs #26 (signature handling diverges); X402-5 #2184, #2207, #2112 (CDP-specific behaviors); Notion page already names "Cross-facilitator observability" as a wedge candidate.
+- **Effort:** M. 2–3 weeks. Auth handling for each facilitator is the long pole.
+- **Differentiation:** xpay/x402scan/zauth all *claim* cross-facilitator but their actual feature is "different facilitator URLs in our config" — none diff *behavior*. This is a real differentiation.
+- **Risks:** Demand thinness — multi-facilitator users are a small subset (Notion notes <10% of x402.org listings). Auth complexity (each facilitator has its own scheme: CDP JWT, PayAI bearer, x402-rs whatever); supporting more than 2 in v0.1 is risky.
+
+### Candidate E: Proxy + structured logging only (rank 6, alone)
+
+- **Scope:** `x402trace proxy` only — sit in front of a paid service, capture every 402 / X-PAYMENT exchange to JSONL, expose a small query CLI. Don't reconcile, don't pre-flight; just record and let humans/other tools consume the logs.
+- **Evidence:** Foundation for everything else. The RFC #1860 explicitly asks for a structured log layer.
+- **Effort:** S. 1–2 weeks.
+- **Differentiation:** Minimal — "yet another observability tool" alone. Real value emerges only when paired with reconcile or inspect.
+- **Risks:** Hardest to justify standalone; easy to dismiss as "just write to a log file yourself."
+
+---
+
+### How the candidates compose
+
+| | A reconcile | B inspect+doctor | C bazaar | D cross-fac | E proxy |
+|---|---|---|---|---|---|
+| Addresses canonical [#1062](https://github.com/x402-foundation/x402/issues/1062) | ✅ | partial | ❌ | ❌ | substrate |
+| Net-new vs current ecosystem | ✅ | partial | ✅ | ✅ | ❌ |
+| Ships in 5 weeks | risky | ✅ | ✅ | risky | ✅ |
+| Vocal current audience | medium | low-medium | **high** | low | low |
+| Differentiation density | high | medium | high (narrow) | high (narrow) | low |
+
+**Best-paired bundles** the X402-7 decision can consider:
+
+- **A + E** — reconciliation + proxy substrate. The Notion page's "Possible sharp wedges" #1 expanded. Highest evidence weight; tightest 5-week scope.
+- **B + maybe E** — pure dev-tooling pitch. Ships fastest. Lowest production-money differentiation but lowest risk.
+- **C alone** — narrow knife. Addresses the loudest current pain cluster but limited ceiling.
+- **A + C** — too much for v0.1; do A in v0.1 and C as v0.2.
 
 ---
 
