@@ -1,4 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "echo 'no build step: Vercel auto-compiles api/*.ts via the Node runtime'",
+  "installCommand": "pnpm install --frozen-lockfile",
   "rewrites": [{ "source": "/(.*)", "destination": "/api/$1" }]
 }
