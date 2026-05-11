@@ -195,6 +195,56 @@ The `transaction` field is a synthetic, mock-emitted hash (notice the `ffff…00
 
 This same flow is asserted automatically by `tests/integration/dogfood-paid-flow.test.ts` and runs on every `pnpm test`.
 
+### Public Vercel deploy (2026-05-12)
+
+**URL (stable branch alias):** [`https://x402trace-dogfood-git-feat-x402-3-ce2524-fardinvahdats-projects.vercel.app`](https://x402trace-dogfood-git-feat-x402-3-ce2524-fardinvahdats-projects.vercel.app)
+
+`vercel.json` configures `outputDirectory: "public"`, declares `api/**/*.ts` as serverless functions explicitly (necessary — without this, Vercel was treating the project as static-only and the `api/` directory was never bundled), and pins `installCommand: "pnpm install --frozen-lockfile"`. `api/[...all].ts` is a Node-style `(req, res)` handler that bridges to `app.fetch()`; it deliberately avoids referencing Web Fetch global types by name because Vercel's serverless build env resolves those as empty shells (while our local tsconfig has them via `@types/node@22`).
+
+**Probe capture:**
+
+```
+$ curl -i https://x402trace-dogfood-git-feat-x402-3-ce2524-fardinvahdats-projects.vercel.app/api/weather
+HTTP/2 402
+content-type: application/json
+server: Vercel
+x-vercel-cache: MISS
+
+{
+  "error": "X-PAYMENT header is required",
+  "accepts": [
+    {
+      "scheme": "exact",
+      "network": "base-sepolia",
+      "maxAmountRequired": "1000",
+      "resource": "https://x402trace-dogfood-git-feat-x402-3-ce2524-fardinvahdats-projects.vercel.app/api/weather?...all=weather",
+      "description": "x402trace dogfood: Base Sepolia weather (testnet)",
+      "mimeType": "application/json",
+      "payTo": "0xADEeaf70FE6fcBD42D926E4159c25d7fc85eB895",
+      "maxTimeoutSeconds": 300,
+      "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+      "outputSchema": { "input": { "type": "http", "method": "GET", "discoverable": true } },
+      "extra": { "name": "USDC", "version": "2" }
+    }
+  ],
+  "x402Version": 1
+}
+```
+
+The `resource` URL contains `?...all=weather` because Vercel's catch-all route `[...all]` captures the path segments as a query parameter. This is a Vercel routing artifact, not an x402 protocol issue — the actual endpoint URL is `/api/weather` and the paymentMiddleware accepts payments addressed to the trailing-slash-free path. **Future cleanup**: either move to a named function (`api/weather.ts`) or strip the `?...all=…` query before computing `resource` so client libraries see a clean URL.
+
+**What I learned in the deploy slog (worth recording as failure-mode/onboarding data):**
+
+| Symptom | Root cause | Fix |
+| --- | --- | --- |
+| Vercel built `main` (no tsconfig) → `tsc` printed `--help` and exited 1 | Vercel's default production branch was `main`; the dashboard "Import" UI doesn't ask which branch to preview | Push the feature branch and use the auto-generated preview, OR temporarily set production branch in Settings |
+| `Error: No Output Directory named "public" found` | Vercel's "Other" preset expects a static output dir | Add `public/index.html` + set `outputDirectory: "public"` |
+| Every `/api/*` request hung for 12s+ with HTTP 000 | Two stacked issues: (a) `hono/vercel`'s Edge-style `handle` mismatched the Node runtime; (b) Vercel's tsc compile of `api/*.ts` was silently failing because Web Fetch global types resolved as empty shells in its build env | (a) Replace with hand-rolled `(req, res) => void` Node handler that calls `app.fetch()`. (b) Stop referencing those types by name; pull constructors off `globalThis` and use `any`-typed locals with runtime guards |
+| Vercel Preview deploys returned `401 Authentication Required` even with the URL | Default Vercel Authentication on Preview deploys (Hobby plan) | Settings → Deployment Protection → disable Vercel Authentication for Preview |
+| Circle's USDC faucet, CDP faucet, and Coinbase consumer faucet all gated me out (mainnet ETH and/or phone verification) | Faucet anti-sybil walls assume mainstream onboarding paths | Documented above; pending teammate/Discord drip to fund the wallet for the real-facilitator 200 capture |
+
+Each of those is a real onboarding paper-cut that an x402-tracing tool can either surface, warn about, or pre-flight against in v0.1+.
+
 ---
 
 ## Failure modes
