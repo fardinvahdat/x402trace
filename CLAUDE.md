@@ -64,7 +64,7 @@ x402trace/
 | What is x402? | [coinbase/x402 README](https://github.com/coinbase/x402), [x402.org](https://x402.org) |
 | What is the wedge? | [SPEC.md](./SPEC.md) (after Week 2) |
 | Why this approach? | [DECISIONS.md](./DECISIONS.md) |
-| What pain are we solving? | [dogfood-notes.md](./dogfood-notes.md) |
+| What pain are we solving? | [dogfood-notes.md](./dogfood-notes.md) — **start with § [Top painful moments](./dogfood-notes.md#top-painful-moments-synthesized---x402-6) and § [Wedge candidates](./dogfood-notes.md#wedge-candidates) (the X402-6 synthesis: 9 ranked pains + 5 candidate wedges)** |
 | How do components fit together? | [ARCHITECTURE.md](./ARCHITECTURE.md) |
 | How do I test? | [TESTING.md](./TESTING.md) |
 
@@ -97,6 +97,7 @@ x402trace/
 ## Working notes for Claude Code
 
 - When starting a session: read CLAUDE.md, SPEC.md (once written), and the Jira ticket linked in the branch name.
+- When the work touches feature design, wedge scope, or "should we build X": read [dogfood-notes.md § Top painful moments](./dogfood-notes.md#top-painful-moments-synthesized---x402-6) first. That table is the project's grounded pain inventory; every proposed feature should map back to at least one ranked pain there.
 - When stuck on x402 protocol details: read the actual `x402` npm package source. Don't guess.
 - When suggesting a refactor: propose it in a comment first, get user confirmation, then change code.
 - When tests are hard to write for a piece of code: that's a design signal. Refactor for testability first.
