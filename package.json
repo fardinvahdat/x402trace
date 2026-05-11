@@ -22,6 +22,7 @@
     "dogfood:mock-facilitator": "tsx scripts/mock-facilitator.ts",
     "dogfood:failure-modes": "tsx scripts/failure-modes.ts",
     "proxy": "tsx scripts/proxy.ts",
+    "decoder:demo": "tsx scripts/decoder-demo.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:unit": "vitest run tests/unit",

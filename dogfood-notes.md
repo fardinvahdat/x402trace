@@ -270,6 +270,30 @@ On-chain settlement: [`0x8b53a04d71cd7dcc35fdf3682ae173758a76213db4ec1abae3e846b
 
 This is the **canonical proof of the rig** — every layer (client → server → real facilitator → on-chain transfer → server settlement header → client decode) ran end-to-end, against production endpoints, with a real on-chain transfer. The 200-flow acceptance criterion is satisfied.
 
+### Decoder readable-output sample (X402-11, 2026-05-12)
+
+Per the X402-11 acceptance criterion ("Human-readable output is genuinely readable — paste it in `dogfood-notes.md` to verify"). This is verbatim stdout from `pnpm tsx scripts/decoder-demo.ts` — full pipeline (mock facilitator + dogfood server + proxy + paying client) running in-process, decoder rendering each event in human format:
+
+```
+# x402trace decoder demo
+# proxy   :  http://localhost:52713  →  http://localhost:52712
+# facilitator (mock) :  http://localhost:52711
+
+[2026-05-11T23:32:21.980Z] HTTP GET /api/weather (id=8b253fd5)
+[2026-05-11T23:32:21.994Z] HTTP 402 rejected (id=8b253fd5, 14ms)
+  [2026-05-11T23:32:21.994Z] 402 challenge id=8b253fd5… v1 exact/base-sepolia amount=1000 payTo=0x1111…1111 asset=0x036C…CF7e (error=X-PAYMENT header is required)
+[2026-05-11T23:32:22.002Z] HTTP GET /api/weather (id=4b351eda)
+  [2026-05-11T23:32:22.002Z] X-PAYMENT id=4b351eda… v1 from=0xf39F…2266 → to=0x1111…1111 value=1000 nonce=0x2030dd… validBefore=1778542641
+[2026-05-11T23:32:22.012Z] HTTP 200 paid (id=4b351eda, 10ms)
+  [2026-05-11T23:32:22.012Z] settlement id=4b351eda… ✓ success tx=0xffffff…
+
+# final HTTP status: 200
+```
+
+Read top-to-bottom this tells the operator: a `GET /api/weather` came in, server returned `402` with a v1 challenge for `1000` base-units USDC, the client retried with an `X-PAYMENT` carrying an EIP-3009 authorization (nonce `0x2030dd…`), and the server returned `200` with a settlement record (mock tx `0xffffff…`). The signature is redacted by default; `--log-secrets` exposes it. The `0xffffff…` synthetic-tx prefix is intentionally pattern-marked so mock-vs-real flows are distinguishable at a glance.
+
+The lines round-trip cleanly: addresses, nonces, and tx hashes are shortened to 8 chars + ellipsis, the `id` field correlates back to the full UUID in the JSONL log, and every decoded line sits indented under the raw HTTP line it describes. Each event in this output also appears in `./x402trace.jsonl` (or wherever `--log-file` points) as a single JSON line in the format documented in [`src/decoder/schema.md`](./src/decoder/schema.md).
+
 ---
 
 ## Failure modes
