@@ -1,13 +1,14 @@
 name: Release
 
-# Tag-triggered publish workflow. Skeleton — the actual `NPM_TOKEN`
-# repo secret and the publish step are wired in [X402-19](https://vahdatfardin.atlassian.net/browse/X402-19),
-# which also picks the v0.1.0 cut. Until then this workflow runs the
-# same quality bar as CI on every tag push and stops short of
-# publishing.
+# Tag-triggered publish workflow. Activated in [X402-19](https://vahdatfardin.atlassian.net/browse/X402-19)
+# for the v0.1.0 cut.
 #
-# Tag convention: `v<MAJOR>.<MINOR>.<PATCH>` (semver). Tags should be
-# created off the `main` branch after a `release/x.y.z` PR merges.
+# Requires the `NPM_TOKEN` repo secret (npm Automation token with
+# Publish scope on the `x402trace` package).
+#
+# Tag convention: `v<MAJOR>.<MINOR>.<PATCH>` (semver). Tags are created
+# off the `main` branch after a `release/x.y.z` PR merges through
+# v1 → staging → main per [CLAUDE.md § Branching strategy](../../CLAUDE.md#branching-strategy).
 
 on:
   push:
@@ -57,16 +58,48 @@ jobs:
       - name: Build
         run: pnpm build
 
-      # ─── X402-19 plumbing — leave commented until NPM_TOKEN lands ───
-      # The package.json `prepublishOnly` script already re-runs
-      # `pnpm test && pnpm build`, so the publish step itself stays one line.
-      #
-      # - name: Publish to npm
-      #   run: pnpm publish --access public --no-git-checks --provenance
-      #   env:
-      #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Tag dry-run notice (X402-19 will replace this with the real publish step)
+      - name: Verify tag matches package.json version
+        # A tag of `v0.1.0` should publish version `0.1.0`. Bail early
+        # if they drift — much better than catching it in npmjs.com.
         run: |
-          echo "Tag $GITHUB_REF_NAME validated. Publish step is intentionally"
-          echo "stubbed until X402-19 wires NPM_TOKEN. See workflow comments."
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version $PKG_VERSION"
+            exit 1
+          fi
+          echo "✓ tag $GITHUB_REF_NAME matches package.json version $PKG_VERSION"
+
+      - name: Publish to npm
+        # `prepublishOnly` re-runs `pnpm test && pnpm build` defensively;
+        # the steps above have already covered both, so this is a fast
+        # no-op. `--no-git-checks` is required in CI because we're not
+        # on a branch (we're on a detached HEAD at the tag).
+        # `--provenance` signs the publish via the GitHub Actions OIDC
+        # token (the `id-token: write` permission above).
+        run: pnpm publish --access public --no-git-checks --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create GitHub Release with CHANGELOG section
+        # Surfaces the matching CHANGELOG.md section in the GitHub UI.
+        # Skipped if the release already exists (idempotent re-tag).
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="$GITHUB_REF_NAME"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG already exists; skipping"
+            exit 0
+          fi
+          # Extract the matching `## [x.y.z]` section from CHANGELOG.md.
+          # Falls back to a placeholder if the section isn't found.
+          NOTES=$(awk -v ver="${TAG#v}" '
+            $0 ~ "^## \\[" ver "\\]" { in_section = 1; print; next }
+            in_section && /^## / { exit }
+            in_section { print }
+          ' CHANGELOG.md)
+          if [ -z "$NOTES" ]; then
+            NOTES="See [CHANGELOG.md](./CHANGELOG.md) for full details."
+          fi
+          gh release create "$TAG" --title "$TAG" --notes "$NOTES"

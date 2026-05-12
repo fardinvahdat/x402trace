@@ -18,7 +18,13 @@ import { runInspectCommand } from "./inspect-command.js";
 import { runProxyCommand } from "./proxy-command.js";
 import { EXIT_SUCCESS, EXIT_USAGE, type ExitCode } from "./exit-codes.js";
 
-const VERSION = "0.0.0";
+// Keep in sync with package.json `version`. A runtime read from
+// package.json would be more durable but requires JSON-module
+// resolution gymnastics in NodeNext + a relative path that works for
+// both `tsx src/cli.ts` (dev) and `dist/cli.js` (published) — folding
+// that into a follow-up cleanup. Until then, the X402-19 release
+// checklist + the changelog-cut step are the guards against drift.
+const VERSION = "0.1.0";
 
 export interface CliContext {
   readonly stdout: NodeJS.WritableStream;

@@ -9,6 +9,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+—
+
+## [0.1.0] — 2026-05-12
+
+The v0.1 wedge: a local proxy + timeout-reconciliation engine that catches the canonical [coinbase/x402#1062](https://github.com/coinbase/x402/issues/1062) symptom — buyer is debited on-chain but the facilitator/server thinks the payment failed. Verified end-to-end on real Base Sepolia + the live `x402.org/facilitator` (tx [`0x116ccf73…ba52`](https://sepolia.basescan.org/tx/0x116ccf73fa77eda19aea149606042f1e848e8afe2f719a0d2890dd2b2ff0ba52)). 215 tests, GitHub Actions CI on Node 20 + 22, Apache-2.0.
+
 ### Added
 
 - Initial project scaffold (X402-2)
@@ -61,4 +67,5 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-[Unreleased]: https://github.com/fardinvahdat/x402trace/compare/main...HEAD
+[Unreleased]: https://github.com/fardinvahdat/x402trace/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.1.0
