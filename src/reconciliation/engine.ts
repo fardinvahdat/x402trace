@@ -41,6 +41,12 @@ export interface ReconciliationEngine {
   pending(): readonly PendingExchange[];
   /** AsyncIterable of every result emitted from now onward. */
   results(): AsyncIterable<ReconciliationResult> & { unsubscribe(): void };
+  /**
+   * Run the expiry sweep once. Useful for offline replay (X402-14
+   * `inspect`) where a virtual clock advances faster than the
+   * `sweepIntervalMs` real-time interval can catch.
+   */
+  tick(): void;
   /** Stop sweeping; resolve any subscriber awaits. */
   close(): Promise<void>;
 }
@@ -188,6 +194,7 @@ export function createReconciliationEngine(opts: EngineOptions = {}): Reconcilia
     ingestChainTransfer,
     pending: () => Array.from(pending.values()),
     results: () => resultBus.subscribe(),
+    tick: sweep,
     async close() {
       clearInterval(interval);
     },
