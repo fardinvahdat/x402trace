@@ -50,7 +50,13 @@ RECONCILED ⚠ settled-but-server-thinks-not  id=35d9aea1…
 
 That `tx=` field is a real Base Sepolia settlement — [view it on basescan](https://sepolia.basescan.org/tx/0x116ccf73fa77eda19aea149606042f1e848e8afe2f719a0d2890dd2b2ff0ba52). An asciinema replay of the full run is committed at [`examples/cast/e2e-timeout-reconciliation.cast`](./examples/cast/e2e-timeout-reconciliation.cast) — `asciinema play` it locally.
 
-*Coming with v0.1.0:* `npx x402trace --help` from any directory. See the [Roadmap](#roadmap) below.
+## Install
+
+```bash
+npm install -g x402trace      # or `pnpm add -g x402trace`, `npx x402trace --help`
+```
+
+Requires Node ≥ 20.
 
 ## How it works
 

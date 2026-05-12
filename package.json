@@ -1,6 +1,6 @@
 {
   "name": "x402trace",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Local CLI for debugging x402 payment flows on Base — catches timeout reconciliation failures",
   "type": "module",
   "bin": {
@@ -15,7 +15,7 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "dev": "tsx src/cli.ts",
     "dogfood:server": "tsx scripts/dev-server.ts",
     "dogfood:client": "tsx scripts/dogfood-client.ts",
