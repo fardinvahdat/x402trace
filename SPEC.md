@@ -57,15 +57,25 @@ $ x402trace proxy --upstream https://api.example.com --port 8402 --reconcile
 - SVM / Lightning / escrow schemes
 - Hosted dashboard, web UI, persistent DB, alerts, team accounts, auth, webhooks
 
-## 5. v0.2 stretch (deferred, not killed)
+## 5. v0.2 scope (picked in [ADR-002](./DECISIONS.md#adr-002-v02-feature-pick--validate-primary--explain-paired))
 
-- Mainnet (after v0.1 logs ≥1 week of testnet traffic clean)
-- `x402trace inspect <captured-402.json>` — offline 402-decode (X402-6 rank 3)
-- `x402trace doctor <wallet> <service>` — pre-flight wallet check (rank 4)
-- `x402trace bazaar-check` — Bazaar indexing diagnostics (rank 2)
-- `x402trace versions` — SDK-skew audit (rank 7)
-- Multi-facilitator support (CDP, PayAI, x402-rs)
-- Reconciliation actions beyond JSONL log (webhook, structured remediation)
+**Two new subcommands sharing one diagnostic engine.** Together they close pre/post-payment debugging — v0.1 owns mid-flight (the proxy) + post-settlement (the reconciliation engine).
+
+- **`x402trace validate <wallet> <service>`** — pre-flight check before signing. Reuses v0.1's chain client (USDC balance, allowance, EIP-3009 nonce status) + decoder (parse the service's 402 challenge). Reports "you would succeed" / "you would fail because X" with the actionable fix per failure. Closes [X402-6 pain rank #4](./dogfood-notes.md#top-painful-moments-synthesized---x402-6) (wallet-state pre-flight gap). Wallet kinds: EOA + Smart Wallet in v0.2; ERC-6492 deferred to v0.3.
+- **`x402trace explain <captured-402.json | jsonl-log>`** — offline plain-English diagnosis of a single 402 or a `reconcile.result` line from the v0.1 JSONL log. Runs the same diagnostic-rule engine as `validate` against captured state. Closes [pain rank #3](./dogfood-notes.md#top-painful-moments-synthesized---x402-6) (generic 402 with no error reason). Distinct from v0.1's `inspect`: `inspect` is bulk + temporal (replay a whole reconciliation log), `explain` is single-record + per-failure prose.
+
+New module `src/diagnose/` holds the rule engine; both subcommands are thin wrappers.
+
+### v0.3 stretch (kept, not killed)
+
+- Mainnet (gated on ≥1 week of clean testnet traffic per [§ 6](#6-success-criteria))
+- ERC-6492 wallet-kind support in `validate`
+- `x402trace diff cdp,payai,x402-rs <payload>` — cross-facilitator behavior diff ([dogfood-notes Candidate D](./dogfood-notes.md#candidate-d-cross-facilitator-drift-dashboard-rank-5))
+- `x402trace bazaar-check` — Bazaar indexing diagnostics (pain rank #2)
+- `x402trace versions` — SDK-skew audit (pain rank #7)
+- `--watch` daemon mode with alerting integrations (PagerDuty / webhook / Slack)
+- `--replay` re-fire-with-modification — only worth shipping with multi-signer support
+- Reconciliation actions beyond JSONL log (webhook, structured remediation, optional auto-retry)
 
 ## 6. Success criteria
 

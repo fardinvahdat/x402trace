@@ -84,25 +84,37 @@ Full architecture: [ARCHITECTURE.md](./ARCHITECTURE.md). Wedge rationale: [DECIS
 ## CLI
 
 ```bash
-x402trace proxy   --upstream <url> [--reconcile] [--log human|json] …
-x402trace inspect <jsonl-log-file> [--log human|json] …
+# v0.1 — during/after payment
+x402trace proxy    --upstream <url> [--reconcile] [--log human|json] …
+x402trace inspect  <jsonl-log-file> [--log human|json] …
+
+# v0.2 — before/explaining payment
+x402trace validate <wallet> <service-url> [--strict] [--log human|json]
+x402trace explain  <jsonl-log-file> [--log human|json]
 ```
 
-The authoritative flag list is `x402trace --help` / `x402trace proxy --help` / `x402trace inspect --help` — they're the source of truth and are wired into the unit tests. See also [`pnpm x402trace --help`](./src/cli/index.ts) directly in the repo.
+The full pre/during/post-payment debugger:
+
+- **`validate <wallet> <service>`** — read-only pre-flight before signing. Fetches the 402, queries USDC balance + EIP-3009 nonce + wallet kind, runs 10 diagnostic rules, prints a plain-English report. Exits 0 if the payment would succeed, 2 if it would fail. Closes [pain rank #4](./dogfood-notes.md#top-painful-moments-synthesized---x402-6) (wallet-state pre-flight gap).
+- **`explain <jsonl-log>`** — read a JSONL log produced by `proxy --reconcile`, find every exchange that didn't `settled_on_chain`, run the same rule engine against the captured state, print per-failure prose with actionable fixes. CI-friendly: exits 2 if any failures, 0 if clean. Closes [pain rank #3](./dogfood-notes.md#top-painful-moments-synthesized---x402-6) (generic 402 with no error reason).
+
+The authoritative flag list is `x402trace --help` (or per-subcommand `--help`) — they're the source of truth and are wired into the unit tests.
 
 ## Roadmap
 
-**v0.1** (current, ~6 weeks from project start) — local proxy + timeout reconciliation + structured logs. Base Sepolia, `x402.org/facilitator`, `exact` EVM scheme only. Detect-and-notify, no auto-refund. Wedge accepted in [ADR-001](./DECISIONS.md).
+**v0.1.0** (shipped 2026-05-12 as [`x402trace@0.1.0`](https://www.npmjs.com/package/x402trace)) — local proxy + timeout reconciliation + structured logs. Base Sepolia, `x402.org/facilitator`, `exact` EVM scheme only. Detect-and-notify, no auto-refund. Wedge accepted in [ADR-001](./DECISIONS.md#adr-001-v01-wedge). Verified by three independent live Base Sepolia settlements.
 
-**v0.2 stretch** (from [SPEC.md § 5](./SPEC.md#5-v02-stretch-deferred-not-killed), ordered by ranked dogfood pain):
+**v0.2** (current) — `validate` (pre-flight) + `explain` (offline 402 diagnosis), sharing a new `src/diagnose/` rule engine. Same scope tightening as v0.1: Base Sepolia, single facilitator, `exact` EVM, read-only. Decision: [ADR-002](./DECISIONS.md#adr-002-v02-feature-pick--validate-primary--explain-paired).
+
+**v0.3 stretch** (kept, not killed — full list in [SPEC.md § 5](./SPEC.md#5-v02-scope-picked-in-adr-002)):
 
 - Mainnet (after ≥1 week of clean testnet traffic)
-- `x402trace inspect <captured-402.json>` — pure-function offline 402 decode
-- `x402trace doctor <wallet> <service>` — pre-flight wallet/service check
+- ERC-6492 wallet-kind support in `validate`
+- `x402trace diff` — cross-facilitator behavior comparison
 - `x402trace bazaar-check` — Bazaar indexing diagnostics
-- `x402trace versions` — SDK-skew audit across `x402`, `x402-fetch`, facilitator
-- Multi-facilitator support (CDP, PayAI, x402-rs)
-- Reconciliation **actions** beyond JSONL (webhook, structured remediation)
+- `x402trace versions` — SDK-skew audit
+- `--watch` daemon mode with alerting integrations
+- Reconciliation actions beyond JSONL (webhook, optional auto-retry)
 
 ## Differentiation
 
