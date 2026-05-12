@@ -9,15 +9,29 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+—
+
+## [0.2.0] — 2026-05-12
+
+The v0.2 pre/post-payment debugger. v0.1 owned mid-flight (proxy) + post-settlement (reconcile); v0.2 adds pre-flight (`validate`) and offline failure diagnosis (`explain`), sharing a new pure rule engine in `src/diagnose/`. Closes pain ranks #3 (generic 402 with no error reason) and #4 (wallet-state pre-flight gap) from the X402-6 ranking. 278 tests, same Base Sepolia / `exact` EVM scope as v0.1 per [ADR-002](./DECISIONS.md#adr-002-v02-feature-pick--validate-primary--explain-paired). Apache-2.0.
+
 ### Added
 
-- **v0.2 pre/post-payment debugger (X402-21)** — two new CLI subcommands sharing a new `src/diagnose/` rule engine, per [ADR-002](./DECISIONS.md#adr-002-v02-feature-pick--validate-primary--explain-paired). Closes pain ranks #3 (generic 402 with no error reason) and #4 (wallet-state pre-flight gap) from [X402-6](./dogfood-notes.md#top-painful-moments-synthesized---x402-6).
-  - **`x402trace validate <wallet> <service-url>`** — read-only pre-flight before signing. Fetches the 402 challenge, queries on-chain USDC balance + EIP-3009 nonce status + wallet kind (EOA vs Smart Wallet via `getCode`), synthesises a hypothetical `PaymentPayload`, runs the diagnose engine, renders a plain-English report. Exits `0` for `would-succeed`, `2` for `would-fail`, `0` for `uncertain` (or `2` with `--strict`).
-  - **`x402trace explain <jsonl-log-file>`** — read a JSONL log produced by `proxy --reconcile`, find every exchange where `reconcile.result.kind != 'settled_on_chain'` plus every `decoder.error`, run the same rule engine against captured state, print per-failure prose with actionable fixes. CI-friendly: exits `2` if any failures rendered, `0` if log was clean.
-  - **`src/diagnose/`** — pure rule engine (no I/O, no `Date.now`). 10 rules covering network match, scheme match, recipient match, value sufficiency, `validBefore` / `validAfter` window, payer USDC balance, EIP-3009 nonce freshness, wallet kind, and Base Sepolia USDC asset address. Each rule returns `pass` / `fail` / `skip`; `skip` means the context lacked the data (e.g. `explain` doesn't have live wallet state). Top-level status is `would-succeed` / `would-fail` / `uncertain` (the latter when the two critical chain-state rules are skipped).
-  - **Chain client extensions:** new `getUsdcBalance(wallet)`, `isNonceConsumed(authorizer, nonce)`, `detectWalletKind(wallet)` read-only methods on `ChainClient`, plus a narrow `USDC_READ_ABI` (just `balanceOf` + `authorizationState`). Used by `validate`; reusable by future v0.3 features.
-  - **Tests:** 59 new tests (215 → 274 total). `tests/unit/diagnose-rules.test.ts` (36) covers each rule's pass/fail/skip paths plus `diagnose()` overall-status logic. `tests/unit/validate-command.test.ts` (14) drives the command with mocked fetch + chain (would-succeed, balance short, nonce consumed, RPC outage, fetch failure, non-canonical asset…). `tests/unit/explain-command.test.ts` (9) drives the command against synthetic JSONL fixtures (clean / failed / decoder-error / garbage-line cases).
-  - **CLI surface:** `x402trace --help` now lists four subcommands; per-subcommand `--help` is the source of truth for flags. `VERSION` constant bumped 0.1.0 → 0.2.0 (kept in sync with `package.json` — release-prep will bump that as part of v0.2.0 cut).
+- **`x402trace validate <wallet> <service-url>` (X402-21)** — read-only pre-flight before signing. Fetches the 402 challenge, queries on-chain USDC balance + EIP-3009 nonce status + wallet kind (EOA vs Smart Wallet via `getCode`), synthesises a hypothetical `PaymentPayload`, runs the diagnose engine, renders a plain-English report. Exits `0` for `would-succeed`, `2` for `would-fail`, `0` for `uncertain` (or `2` with `--strict`).
+- **`x402trace explain <jsonl-log-file>` (X402-21)** — read a JSONL log produced by `proxy --reconcile`, find every exchange where `reconcile.result.kind != 'settled_on_chain'` plus every `decoder.error`, run the same rule engine against captured state, print per-failure prose with actionable fixes. CI-friendly: exits `2` if any failures rendered, `0` if log was clean.
+- **`src/diagnose/` (X402-21)** — pure rule engine (no I/O, no `Date.now`). 10 rules covering network match, scheme match, recipient match, value sufficiency, `validBefore` / `validAfter` window, payer USDC balance, EIP-3009 nonce freshness, wallet kind (EOA + Smart Wallet; ERC-6492 deferred to v0.3 per ADR-002), and Base Sepolia USDC asset address. Each rule returns `pass` / `fail` / `skip`; `skip` means the context lacked the data (e.g. `explain` doesn't have live wallet state). Top-level status is `would-succeed` / `would-fail` / `uncertain` (the latter when the two critical chain-state rules are skipped).
+- **Chain client extensions (X402-21)** — `getUsdcBalance(wallet)`, `isNonceConsumed(authorizer, nonce)`, `detectWalletKind(wallet)` read-only methods on `ChainClient`, plus a narrow `USDC_READ_ABI` (just `balanceOf` + `authorizationState`). Used by `validate`; reusable by future v0.3 features.
+- **v0.2 feature pick (X402-20)** — ADR-002 records the decision + 4 rejected alternatives. SPEC.md § 5 flipped from "v0.2 stretch (deferred)" to "v0.2 scope" with a new v0.3 stretch list catching the deferrals. CLAUDE.md current-focus flipped to v0.2.
+- **CI release workflow `contents: write` fix** — release.yml's `Create GitHub Release` step had failed on the v0.1.0 cut with HTTP 403 because the job had `contents: read`. Promoted to `write` so v0.2.0+ tag-pushes self-create the GitHub Release without manual intervention.
+
+### Tests
+
+- 278 total (+63 from v0.1.0's 215). New: 36 unit tests for `diagnose-rules`, 14 for `validate-command`, 9 for `explain-command`, +4 for `cli-dispatcher` covering the new subcommands.
+
+### Notes
+
+- `package.json` bin layout unchanged from v0.1.0 — `x402trace` resolves to four subcommands (`proxy`, `inspect`, `validate`, `explain`).
+- `tsconfig.build.json` is still the published-bundle config; tarball stays ~62 files / ~156 KB.
 
 ## [0.1.0] — 2026-05-12
 
@@ -75,5 +89,6 @@ The v0.1 wedge: a local proxy + timeout-reconciliation engine that catches the c
 
 ---
 
-[Unreleased]: https://github.com/fardinvahdat/x402trace/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/fardinvahdat/x402trace/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.2.0
 [0.1.0]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.1.0
