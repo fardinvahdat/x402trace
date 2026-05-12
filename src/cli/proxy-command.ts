@@ -52,6 +52,61 @@ const DEFAULT_LOG_PATH = "./x402trace.jsonl";
 const DEFAULT_WATCH_TIMEOUT_MS = 60_000;
 
 /**
+ * Pure config resolver for the `proxy` subcommand. Encapsulates the
+ * flag-vs-env-vs-default precedence rules from
+ * [ARCHITECTURE.md § Configuration](../../ARCHITECTURE.md#configuration)
+ * so they can be unit-tested without spinning up a real proxy.
+ *
+ * Precedence (highest wins): CLI flag → env var → built-in default.
+ *
+ * Returns either a fully-resolved config or a `usage_error` when the
+ * required `--upstream` is missing from both flag and env.
+ */
+export type ResolveProxyConfigResult =
+  | { readonly ok: true; readonly config: ResolvedProxyConfig }
+  | { readonly ok: false; readonly message: string };
+
+export interface ResolvedProxyConfig {
+  readonly upstream: string;
+  readonly port: number;
+  readonly logPath: string;
+  readonly format: LogFormat;
+  readonly logSecrets: boolean;
+  readonly reconcile: boolean;
+  readonly rpcUrl: string | undefined;
+  readonly watchTimeoutMs: number;
+  readonly upstreamTimeoutMs: number | undefined;
+}
+
+export function resolveProxyConfig(
+  opts: ProxyCommandOptions,
+  env: Readonly<Record<string, string | undefined>>,
+): ResolveProxyConfigResult {
+  const upstream = opts.upstream ?? env.X402TRACE_UPSTREAM;
+  if (!upstream) {
+    return { ok: false, message: "--upstream is required" };
+  }
+  return {
+    ok: true,
+    config: {
+      upstream,
+      port: opts.port ?? toIntOrNull(env.X402TRACE_PORT) ?? DEFAULT_PORT,
+      logPath: opts.logFile ?? env.X402TRACE_LOG ?? DEFAULT_LOG_PATH,
+      format: opts.log ?? "human",
+      logSecrets: opts.logSecrets ?? false,
+      reconcile: opts.reconcile ?? truthy(env.X402TRACE_RECONCILE),
+      rpcUrl: opts.rpcUrl ?? env.BASE_RPC_URL,
+      watchTimeoutMs:
+        opts.watchTimeoutMs ??
+        toIntOrNull(env.X402TRACE_WATCH_TIMEOUT_MS) ??
+        DEFAULT_WATCH_TIMEOUT_MS,
+      upstreamTimeoutMs:
+        opts.upstreamTimeoutMs ?? toIntOrNull(env.X402TRACE_UPSTREAM_TIMEOUT_MS) ?? undefined,
+    },
+  };
+}
+
+/**
  * Run the `proxy` subcommand. Returns the exit code; callers
  * (`src/cli.ts`) translate this to `process.exit`. Tests inject a
  * fast-resolving `waitForShutdown` so the command can run end-to-end
@@ -61,30 +116,28 @@ export async function runProxyCommand(
   opts: ProxyCommandOptions,
   ctx: RunContext,
 ): Promise<ExitCode> {
-  const upstream = opts.upstream ?? ctx.env.X402TRACE_UPSTREAM;
-  if (!upstream) {
-    ctx.stderr.write("error: --upstream is required\n");
+  const resolved = resolveProxyConfig(opts, ctx.env);
+  if (!resolved.ok) {
+    ctx.stderr.write(`error: ${resolved.message}\n`);
     return EXIT_USAGE;
   }
-
-  const port = opts.port ?? toIntOrNull(ctx.env.X402TRACE_PORT) ?? DEFAULT_PORT;
-  const logPath = opts.logFile ?? ctx.env.X402TRACE_LOG ?? DEFAULT_LOG_PATH;
-  const format: LogFormat = opts.log ?? "human";
-  const logSecrets = opts.logSecrets ?? false;
-  const reconcile = opts.reconcile ?? truthy(ctx.env.X402TRACE_RECONCILE);
-  const rpcUrl = opts.rpcUrl ?? ctx.env.BASE_RPC_URL;
-  const watchTimeoutMs =
-    opts.watchTimeoutMs ??
-    toIntOrNull(ctx.env.X402TRACE_WATCH_TIMEOUT_MS) ??
-    DEFAULT_WATCH_TIMEOUT_MS;
+  const {
+    upstream,
+    port,
+    logPath,
+    format,
+    logSecrets,
+    reconcile,
+    rpcUrl,
+    watchTimeoutMs,
+    upstreamTimeoutMs,
+  } = resolved.config;
 
   const color = ctx.color ?? createColorizer({ stream: ctx.stdout as { isTTY?: boolean } });
 
   // The proxy owns its own JsonlSink for proxy events; we open a
   // SECOND sink against the same path for chain + reconcile events.
   // Both use O_APPEND so kernel-level atomicity covers per-line writes.
-  const upstreamTimeoutMs =
-    opts.upstreamTimeoutMs ?? toIntOrNull(ctx.env.X402TRACE_UPSTREAM_TIMEOUT_MS) ?? undefined;
   const proxyHandle = await createProxy({
     upstream,
     port,
