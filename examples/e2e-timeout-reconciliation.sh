@@ -83,8 +83,23 @@ require_env() {
 
 cyan "── x402trace e2e demo (X402-15) ───────────────────────────────────"
 # Source .env if present so users don't need to export every var
-# manually. Same precedence model as the Node-side `dotenv/config`.
+# manually. Same precedence model as the Node-side `dotenv/config`,
+# with one extra safety net: bash `source` lets *later* assignments win,
+# so a half-edited .env (real value on top, placeholder block from
+# `.env.example` left below) silently overrides the real value with
+# `0x`. Warn the user instead of letting them debug a downstream
+# "0x is not a valid address" wait_for_port timeout.
 if [ -f "$DEMO_ROOT/.env" ]; then
+  for key in RECEIVER_ADDRESS PAYER_PRIVATE_KEY; do
+    count=$(grep -cE "^${key}=" "$DEMO_ROOT/.env" || true)
+    if [ "$count" -gt 1 ]; then
+      red "✗ .env has $count lines starting with ${key}="
+      echo "   bash sources top-to-bottom and the LAST assignment wins, which usually"
+      echo "   means a placeholder from .env.example is overriding your real value."
+      echo "   keep one line per key and re-run."
+      exit 2
+    fi
+  done
   set -a
   # shellcheck disable=SC1091
   . "$DEMO_ROOT/.env"
@@ -130,7 +145,11 @@ trap cleanup EXIT INT TERM
 
 wait_for_port() {
   local port="$1"
-  local budget=20
+  local stdout_path="${2:-}"
+  # 60 cycles × 0.5s = 30s budget. tsx cold-start on a fresh machine
+  # plus dotenv + hono + x402-* imports can take >10s; 30s leaves head-
+  # room without making a real failure feel sluggish to detect.
+  local budget=60
   while [ "$budget" -gt 0 ]; do
     if (printf "" >"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
       return 0
@@ -139,6 +158,11 @@ wait_for_port() {
     budget=$((budget - 1))
   done
   red "✗ timed out waiting for localhost:$port"
+  if [ -n "$stdout_path" ] && [ -s "$stdout_path" ]; then
+    echo
+    yellow "  process stdout/stderr (last 30 lines of $stdout_path):"
+    tail -n 30 "$stdout_path" | sed 's/^/    /'
+  fi
   return 1
 }
 
@@ -157,7 +181,7 @@ DEMO_SLEEP_MS="$SLEEP_MS" \
 DOGFOOD_PORT="$SERVER_PORT" \
 pnpm --silent dogfood:server >"$SERVER_STDOUT" 2>&1 &
 SERVER_PID=$!
-wait_for_port "$SERVER_PORT"
+wait_for_port "$SERVER_PORT" "$SERVER_STDOUT"
 green "  server up on http://localhost:$SERVER_PORT  (pid=$SERVER_PID)"
 
 # ---------- step 2: x402trace proxy --reconcile in front ----------
@@ -173,7 +197,7 @@ pnpm --silent x402trace proxy \
   --log human \
   >"$PROXY_STDOUT" 2>&1 &
 PROXY_PID=$!
-wait_for_port "$PROXY_PORT"
+wait_for_port "$PROXY_PORT" "$PROXY_STDOUT"
 green "  proxy up on http://localhost:$PROXY_PORT  (pid=$PROXY_PID)"
 
 # ---------- step 3: dogfood client through the proxy ----------
