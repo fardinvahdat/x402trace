@@ -259,3 +259,167 @@ function collect(engine: ReconciliationEngine): {
     },
   };
 }
+
+/**
+ * X402-17 edge-case coverage: paths the existing 9 lifecycle tests
+ * leave on the table.
+ *
+ * The engine has three places it can silently misbehave:
+ *   1. `extractErrorReason` — runs JSON.parse on every 402 rawBody.
+ *      Non-JSON / missing-error rawBodies must not throw or populate
+ *      `errorReason` with garbage.
+ *   2. The `unknown` proxy outcome branch — the ARCHITECTURE only
+ *      names rejected / upstream_timeout, but the proxy emits
+ *      `unknown` on non-2xx-non-402 statuses and the engine must
+ *      pend those too (X402-15 demo with DEMO_FAIL_AFTER_SLEEP=1
+ *      hits this path).
+ *   3. Chain-transfer-first arrival — if the chain client's poller
+ *      fires before the proxy event drains, the engine must not
+ *      crash; the transfer is just ignored (no pending entry to match).
+ */
+describe("createReconciliationEngine — extractErrorReason edge cases (X402-17)", () => {
+  it("handles a rejected outcome whose rawBody is not JSON without populating errorReason", () => {
+    const engine = createReconciliationEngine({ watchTimeoutMs: 1_000 });
+    engine.ingestDecoderEvent(paymentEvent(EXCHANGE_ID));
+    engine.ingestProxyEvent({
+      event: "exchange.closed",
+      t: new Date().toISOString(),
+      id: EXCHANGE_ID,
+      response: { status: 402, headers: {}, body: "<html>nope</html>" },
+      outcome: {
+        kind: "rejected",
+        status: 402,
+        receivedAt: new Date().toISOString(),
+        rawBody: "<html>nope</html>",
+      },
+      durationMs: 7,
+    });
+    const pending = engine.pending();
+    expect(pending).toHaveLength(1);
+    expect(pending[0]?.errorReason).toBeUndefined();
+    void engine.close();
+  });
+
+  it("handles a rejected outcome whose rawBody is JSON but missing `error`", () => {
+    const engine = createReconciliationEngine({ watchTimeoutMs: 1_000 });
+    engine.ingestDecoderEvent(paymentEvent(EXCHANGE_ID));
+    engine.ingestProxyEvent({
+      event: "exchange.closed",
+      t: new Date().toISOString(),
+      id: EXCHANGE_ID,
+      response: {
+        status: 402,
+        headers: {},
+        body: JSON.stringify({ other: "field" }),
+      },
+      outcome: {
+        kind: "rejected",
+        status: 402,
+        receivedAt: new Date().toISOString(),
+        rawBody: JSON.stringify({ other: "field" }),
+      },
+      durationMs: 7,
+    });
+    const pending = engine.pending();
+    expect(pending).toHaveLength(1);
+    expect(pending[0]?.errorReason).toBeUndefined();
+    void engine.close();
+  });
+
+  it("handles a rejected outcome with no rawBody at all", () => {
+    const engine = createReconciliationEngine({ watchTimeoutMs: 1_000 });
+    engine.ingestDecoderEvent(paymentEvent(EXCHANGE_ID));
+    engine.ingestProxyEvent({
+      event: "exchange.closed",
+      t: new Date().toISOString(),
+      id: EXCHANGE_ID,
+      response: { status: 402, headers: {} },
+      outcome: { kind: "rejected", status: 402, receivedAt: new Date().toISOString() },
+      durationMs: 7,
+    });
+    expect(engine.pending()).toHaveLength(1);
+    void engine.close();
+  });
+});
+
+describe("createReconciliationEngine — `unknown` outcome branch (X402-17)", () => {
+  it("pends an exchange whose proxy outcome is `unknown` (e.g. 500/503 post-settle)", () => {
+    // X402-15's DEMO_FAIL_AFTER_SLEEP path hits this exact branch:
+    // server settled, then returned 500 → proxy classifies the
+    // response as `unknown`. The engine must still pend (so the
+    // chain match is possible) — the X402-13 ARCHITECTURE table only
+    // names rejected + upstream_timeout, but the implementation
+    // promotes `unknown` too.
+    const engine = createReconciliationEngine({ watchTimeoutMs: 1_000 });
+    engine.ingestDecoderEvent(paymentEvent(EXCHANGE_ID));
+    engine.ingestProxyEvent({
+      event: "exchange.closed",
+      t: new Date().toISOString(),
+      id: EXCHANGE_ID,
+      response: { status: 500, headers: {}, body: "Internal Server Error" },
+      outcome: { kind: "unknown", status: 500, receivedAt: new Date().toISOString() },
+      durationMs: 11_500,
+    });
+    const pending = engine.pending();
+    expect(pending).toHaveLength(1);
+    expect(pending[0]?.outcomeKind).toBe("unknown");
+    void engine.close();
+  });
+});
+
+describe("createReconciliationEngine — chain-transfer arrival edge cases (X402-17)", () => {
+  it("ignores a chain transfer whose nonce doesn't match any pending entry (no crash)", () => {
+    // The chain client emits Transfer events for the whole network;
+    // most of them are unrelated to our exchanges. The engine must
+    // shrug them off cheaply.
+    const engine = createReconciliationEngine({ watchTimeoutMs: 1_000 });
+    engine.ingestChainTransfer(transfer({ authorizationNonce: `0x${"e".repeat(64)}` }));
+    expect(engine.pending()).toHaveLength(0); // never had one
+    void engine.close();
+  });
+
+  it("a chain transfer arriving BEFORE the payment+outcome join is a no-op (no crash, no pre-match)", () => {
+    // Race: chain poll fires before the proxy events drain. The
+    // engine has no pending entry to match against, so the transfer
+    // is silently dropped. Once the proxy/decoder events arrive
+    // later, the entry pends — but the engine doesn't have a
+    // back-buffer of unconsumed chain transfers, so no match occurs.
+    // This pins the v0.1 contract: chain transfers seen before pending
+    // are lost. A future hardening could buffer them (recorded as a
+    // known v0.2 consideration).
+    const engine = createReconciliationEngine({ watchTimeoutMs: 1_000 });
+    engine.ingestChainTransfer(transfer());
+    engine.ingestDecoderEvent(paymentEvent(EXCHANGE_ID));
+    engine.ingestProxyEvent(closedEvent(EXCHANGE_ID, "rejected"));
+    expect(engine.pending()).toHaveLength(1); // pended, but unmatched
+    void engine.close();
+  });
+
+  it("after a settled_on_chain emission, a second matching chain transfer is a no-op", async () => {
+    // Real-world: re-orgs or duplicate Transfer events can fire the
+    // same logical settlement twice. The engine removes the pending
+    // entry on first match, so the second transfer finds nothing.
+    const results: ReconciliationResult[] = [];
+    const engine = createReconciliationEngine({ watchTimeoutMs: 1_000 });
+    const sub = engine.results();
+    const collector = (async () => {
+      for await (const r of sub) results.push(r);
+    })();
+
+    engine.ingestDecoderEvent(paymentEvent(EXCHANGE_ID));
+    engine.ingestProxyEvent(closedEvent(EXCHANGE_ID, "rejected"));
+    engine.ingestChainTransfer(transfer({ txHash: `0x${"1".repeat(64)}` }));
+    engine.ingestChainTransfer(transfer({ txHash: `0x${"2".repeat(64)}` }));
+
+    await new Promise((r) => setTimeout(r, 10));
+    sub.unsubscribe();
+    await engine.close();
+    await collector;
+
+    expect(results).toHaveLength(1);
+    expect(results[0]?.kind).toBe("settled_on_chain");
+    if (results[0]?.kind === "settled_on_chain") {
+      expect(results[0].onChain.txHash).toBe(`0x${"1".repeat(64)}`);
+    }
+  });
+});
