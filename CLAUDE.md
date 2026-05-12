@@ -10,9 +10,10 @@ Canonical reference: [coinbase/x402 Issue #1062](https://github.com/coinbase/x40
 
 ## Status
 
-- **Phase:** Pre-v0.1 build (Week 1 complete)
-- **Wedge:** **Local HTTP proxy + timeout-reconciliation engine.** Accepted 2026-05-12 in [ADR-001](./DECISIONS.md#adr-001-v01-wedge). Scope: Base Sepolia only, single facilitator profile (`x402.org/facilitator`), `exact` EVM scheme only, detect-and-notify (no auto-refund).
-- **Timeline:** 6 weeks to v0.1 (~5 weeks remaining)
+- **Phase:** v0.1.0 shipped 2026-05-12 ([`x402trace@0.1.0`](https://www.npmjs.com/package/x402trace)). Now in v0.2 scope.
+- **v0.1 wedge:** Local HTTP proxy + timeout-reconciliation engine. Accepted 2026-05-12 in [ADR-001](./DECISIONS.md#adr-001-v01-wedge). Verified via three independent live Base Sepolia settlements ([tx `0x116ccf73…ba52`](https://sepolia.basescan.org/tx/0x116ccf73fa77eda19aea149606042f1e848e8afe2f719a0d2890dd2b2ff0ba52) is the X402-15 demo capture).
+- **v0.2 scope:** `x402trace validate` (pre-flight) + `x402trace explain` (offline plain-English 402 diagnosis), sharing a new `src/diagnose/` rule engine. Picked 2026-05-12 in [ADR-002](./DECISIONS.md#adr-002-v02-feature-pick--validate-primary--explain-paired). Same scope tightening as v0.1: Base Sepolia only, single facilitator, `exact` EVM, read-only.
+- **Timeline:** ~2 weeks to v0.2.0. Implementation in [X402-21](https://vahdatfardin.atlassian.net/browse/X402-21), release in [X402-22](https://vahdatfardin.atlassian.net/browse/X402-22).
 - **Repo:** https://github.com/fardinvahdat/x402trace
 - **Jira:** https://vahdatfardin.atlassian.net/jira/software/projects/X402
 - **Notion plan:** https://www.notion.so/35c03c62b2638159a5e2d1ecaac5ff0b
