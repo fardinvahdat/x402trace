@@ -25,9 +25,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: read
-      # `id-token: write` is what npm wants for provenance — keep it
-      # ready so X402-19 doesn't have to re-touch this file.
+      # `contents: write` is required by the `gh release create` step
+      # at the end of this job. The first v0.1.0 publish (X402-19)
+      # succeeded at npm publish but failed the Release step with
+      # `HTTP 403: Resource not accessible by integration` because we
+      # initially set this to `read`. Future releases need write.
+      contents: write
+      # `id-token: write` is what npm wants for provenance signing.
       id-token: write
     steps:
       - name: Checkout
