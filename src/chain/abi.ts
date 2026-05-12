@@ -37,3 +37,33 @@ export const AUTHORIZATION_USED_EVENT = {
     { indexed: true, name: "nonce", type: "bytes32" },
   ],
 } as const;
+
+/**
+ * Read-only USDC functions used by `validate` (X402-21). `balanceOf`
+ * and EIP-3009's `authorizationState` give us pre-flight visibility
+ * without signing anything. Kept narrow — we only declare the
+ * functions we actually call, so importing this ABI subset doesn't
+ * advertise capabilities x402trace doesn't use.
+ */
+export const USDC_READ_ABI = [
+  {
+    type: "function",
+    stateMutability: "view",
+    name: "balanceOf",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    // EIP-3009: returns true iff the nonce was already consumed for
+    // this authorizer. `transferWithAuthorization` flips this from
+    // false to true atomically with the Transfer.
+    type: "function",
+    stateMutability: "view",
+    name: "authorizationState",
+    inputs: [
+      { name: "authorizer", type: "address" },
+      { name: "nonce", type: "bytes32" },
+    ],
+    outputs: [{ name: "", type: "bool" }],
+  },
+] as const;

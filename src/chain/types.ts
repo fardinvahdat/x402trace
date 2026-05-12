@@ -97,6 +97,33 @@ export interface ChainClient {
   /** Current head block number. Used to compute confirmations. */
   getBlockNumber(): Promise<bigint>;
 
+  /**
+   * X402-21 v0.2: read-only USDC balance for `validate`'s pre-flight
+   * check. Returns the raw token amount (no decimals applied) so the
+   * diagnose engine compares as bigints.
+   */
+  getUsdcBalance(wallet: Address): Promise<bigint>;
+
+  /**
+   * X402-21 v0.2: EIP-3009 nonce status. Returns true iff
+   * `(authorizer, nonce)` has already been consumed on the USDC
+   * contract. Used by the `nonce-fresh` diagnostic rule.
+   */
+  isNonceConsumed(authorizer: Address, nonce: Hex): Promise<boolean>;
+
+  /**
+   * X402-21 v0.2: best-effort wallet kind classification.
+   * - `eoa` if the address has no contract code
+   * - `smart-wallet` if it does
+   * - `unknown` if the chain call errored
+   *
+   * v0.2 doesn't distinguish ERC-6492 (undeployed Smart Wallet) — that's
+   * a v0.3 gap per ADR-002. A real ERC-6492 wallet that's never been
+   * deployed shows up here as `eoa` (no code), which the diagnose
+   * engine surfaces as a soft warning rather than a hard pass.
+   */
+  detectWalletKind(wallet: Address): Promise<"eoa" | "smart-wallet" | "unknown">;
+
   /** Tear down any watchers. */
   close(): Promise<void>;
 }
