@@ -1,6 +1,6 @@
 {
   "name": "x402trace",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Local CLI for debugging x402 payment flows on Base — catches timeout reconciliation failures",
   "type": "module",
   "bin": {
