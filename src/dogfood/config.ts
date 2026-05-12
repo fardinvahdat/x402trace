@@ -8,6 +8,28 @@ export interface DogfoodConfig {
   readonly priceUsd: `$${string}`;
   readonly protectedPath: string;
   readonly description: string;
+  /**
+   * X402-15 demo knob. When >0, the protected route handler sleeps for
+   * this many ms while the request is in flight. `x402-hono`'s
+   * paymentMiddleware verifies BEFORE the handler runs and settles AFTER,
+   * so a long handler sleep + a shorter proxy `upstreamTimeoutMs` means
+   * the buyer-facing 502 fires while the server is still mid-handler;
+   * once the handler returns 200, the middleware completes /settle in
+   * the background and the on-chain transfer lands. That's the
+   * canonical timeout-reconciliation scenario the engine is built to
+   * catch.
+   */
+  readonly demoSleepMs?: number;
+  /**
+   * X402-15 demo knob. When true, the protected route handler returns
+   * 500 after the sleep. **Note (verified live 2026-05-12 on
+   * `x402.org/facilitator` + `x402-hono@1.2.0`):** x402-hono skips
+   * /settle when the handler responds with 5xx, so the on-chain
+   * transfer is NEVER broadcast — the engine will eventually fire
+   * `not_settled`, not `settled_on_chain`. Kept for negative-path
+   * documentation; do NOT enable it for the canonical demo.
+   */
+  readonly demoFailAfterSleep?: boolean;
 }
 
 export interface ClientConfig {
@@ -74,6 +96,13 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): DogfoodC
   } catch {
     throw new ConfigError(`FACILITATOR_URL is not a valid URL: ${facilitatorUrl}`);
   }
+  const demoSleepRaw = env.DEMO_SLEEP_MS;
+  const demoSleepMs = demoSleepRaw ? Number(demoSleepRaw) : undefined;
+  if (demoSleepRaw !== undefined && (!Number.isFinite(demoSleepMs) || demoSleepMs! < 0)) {
+    throw new ConfigError(`DEMO_SLEEP_MS must be a non-negative number (got '${demoSleepRaw}')`);
+  }
+  const demoFailAfterSleep =
+    env.DEMO_FAIL_AFTER_SLEEP === "1" || env.DEMO_FAIL_AFTER_SLEEP === "true";
   return {
     receiverAddress: receiver,
     network: REQUIRED_TESTNET_NETWORK,
@@ -81,6 +110,8 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): DogfoodC
     priceUsd: "$0.001",
     protectedPath: "/api/weather",
     description: "x402trace dogfood: Base Sepolia weather (testnet)",
+    ...(demoSleepMs !== undefined && demoSleepMs > 0 ? { demoSleepMs } : {}),
+    ...(demoFailAfterSleep ? { demoFailAfterSleep: true } : {}),
   };
 }
 

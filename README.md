@@ -19,13 +19,46 @@ This is [coinbase/x402 #1062](https://github.com/coinbase/x402/issues/1062). **x
 - Watches the facilitator response — if it times out or errors, x402trace queries Base directly to check whether the payment actually settled
 - Surfaces "settled but unconfirmed" payments with the tx hash so you can reconcile
 
+## Quick demo
+
+```bash
+git clone https://github.com/fardinvahdat/x402trace.git && cd x402trace
+pnpm install
+
+# populate .env with PAYER_PRIVATE_KEY (Base Sepolia testnet) and
+# RECEIVER_ADDRESS — see examples/README.md for the full prereq list.
+./examples/e2e-timeout-reconciliation.sh
+```
+
+Under 40 seconds the demo:
+
+1. Starts the dogfood server with a 10 s post-settle sleep + 500
+2. Starts `x402trace proxy --reconcile --upstream-timeout-ms 5000` in front of it
+3. Pays through the proxy with a real Base Sepolia signer
+4. The proxy times out, the facilitator already broadcast on-chain
+5. x402trace's chain subscription matches the EIP-3009 nonce and emits:
+
+   ```
+   ⚠ RECONCILED  settled-but-server-thinks-not  tx=0x… value=1000 gap=…ms
+   ```
+
+That's the canonical [#1062](https://github.com/coinbase/x402/issues/1062) detection. See [examples/README.md](./examples/README.md) for prereqs, knobs, and asciinema recording.
+
+## CLI
+
+```bash
+x402trace proxy --upstream <url> --reconcile        # live capture + reconciliation
+x402trace inspect <jsonl-log-file>                  # replay a captured log offline
+x402trace --help
+```
+
 ## Status
 
 | Item | State |
 | --- | --- |
-| v0.1 spec | _In progress_ — see [SPEC.md](./SPEC.md) |
-| Architecture | _In progress_ — see [ARCHITECTURE.md](./ARCHITECTURE.md) |
-| Implementation | Not started (begins Week 3) |
+| v0.1 spec | ✅ Locked — see [SPEC.md](./SPEC.md) |
+| Architecture | ✅ Locked — see [ARCHITECTURE.md](./ARCHITECTURE.md) |
+| Implementation | Week 3 complete — proxy, decoder, chain client, reconciliation engine, CLI, e2e demo all shipped (X402-10..15) |
 | First release | Target: 6 weeks from project start |
 
 ## Roadmap

@@ -49,6 +49,7 @@ x402trace/
 ├── .env.example        — config template
 ├── package.json
 ├── tsconfig.json       — minimal strict ESM NodeNext (added pre-X402-10 to unblock the pipeline)
+├── examples/           — runnable demos [shipped X402-15: e2e-timeout-reconciliation.sh]
 └── src/
     ├── proxy/          — local HTTP proxy [shipped X402-10]
     ├── decoder/        — x402 message decoding + structured logger [shipped X402-11]

@@ -65,6 +65,7 @@ describe("runCli — surface", () => {
       "--reconcile",
       "--rpc-url",
       "--watch-timeout-ms",
+      "--upstream-timeout-ms",
     ]) {
       expect(ctx._out.output, `missing ${flag} in proxy --help`).toContain(flag);
     }
