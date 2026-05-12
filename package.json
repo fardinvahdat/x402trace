@@ -1,6 +1,6 @@
 {
   "name": "x402trace",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Local CLI for debugging x402 payment flows on Base — catches timeout reconciliation failures",
   "type": "module",
   "bin": {
@@ -15,8 +15,15 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "dev": "tsx src/cli.ts",
+    "dogfood:server": "tsx scripts/dev-server.ts",
+    "dogfood:client": "tsx scripts/dogfood-client.ts",
+    "dogfood:mock-facilitator": "tsx scripts/mock-facilitator.ts",
+    "dogfood:failure-modes": "tsx scripts/failure-modes.ts",
+    "proxy": "tsx scripts/proxy.ts",
+    "x402trace": "tsx src/cli.ts",
+    "decoder:demo": "tsx scripts/decoder-demo.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:unit": "vitest run tests/unit",
@@ -25,8 +32,8 @@
     "test:smoke": "vitest run tests/smoke",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint . && prettier --check .",
-    "lint:fix": "eslint . --fix && prettier --write .",
+    "lint": "eslint . && prettier --check \"{src,scripts,tests,api}/**/*.ts\" \"*.json\" \"*.js\"",
+    "lint:fix": "eslint . --fix && prettier --write \"{src,scripts,tests,api}/**/*.ts\" \"*.json\" \"*.js\"",
     "lint:docs": "echo 'TODO: wire up markdown lint in X402-2'",
     "lint:links": "echo 'TODO: wire up link checker in X402-2'",
     "prepublishOnly": "pnpm test && pnpm build"
@@ -56,6 +63,7 @@
     "node": ">=20.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@types/node": "^22.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
@@ -65,5 +73,14 @@
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
     "vitest": "^3.0.0"
+  },
+  "dependencies": {
+    "commander": "^14.0.3",
+    "dotenv": "^17.4.2",
+    "hono": "^4.12.18",
+    "viem": "^2.48.11",
+    "x402": "^1.2.0",
+    "x402-fetch": "^1.2.0",
+    "x402-hono": "^1.2.0"
   }
 }

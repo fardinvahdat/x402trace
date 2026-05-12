@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "echo 'no build step: api/*.ts are serverless functions'",
+  "installCommand": "pnpm install --frozen-lockfile",
+  "outputDirectory": "public",
+  "functions": {
+    "api/**/*.ts": {
+      "maxDuration": 10
+    }
+  }
+}
