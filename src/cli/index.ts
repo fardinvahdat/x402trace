@@ -41,6 +41,7 @@ interface ProxyFlags {
   reconcile?: boolean;
   rpcUrl?: string;
   watchTimeoutMs?: string;
+  upstreamTimeoutMs?: string;
 }
 
 interface InspectFlags {
@@ -90,6 +91,10 @@ export async function runCli(argv: readonly string[], ctx: CliContext): Promise<
       "--watch-timeout-ms <n>",
       "How long to watch the chain for a rejected exchange before giving up (default 60000)",
     )
+    .option(
+      "--upstream-timeout-ms <n>",
+      "Per-request timeout to the upstream server; on timeout the proxy emits `upstream_timeout` and returns 502 (default 30000)",
+    )
     .action(async (flags: ProxyFlags) => {
       const log = flags.log as LogFormat | undefined;
       exit = await runProxyCommand(
@@ -103,6 +108,9 @@ export async function runCli(argv: readonly string[], ctx: CliContext): Promise<
           ...(flags.rpcUrl !== undefined ? { rpcUrl: flags.rpcUrl } : {}),
           ...(flags.watchTimeoutMs !== undefined
             ? { watchTimeoutMs: Number(flags.watchTimeoutMs) }
+            : {}),
+          ...(flags.upstreamTimeoutMs !== undefined
+            ? { upstreamTimeoutMs: Number(flags.upstreamTimeoutMs) }
             : {}),
         },
         {

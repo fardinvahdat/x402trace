@@ -35,6 +35,7 @@ export interface ProxyCommandOptions {
   readonly reconcile?: boolean;
   readonly rpcUrl?: string;
   readonly watchTimeoutMs?: number;
+  readonly upstreamTimeoutMs?: number;
 }
 
 export interface RunContext {
@@ -82,7 +83,14 @@ export async function runProxyCommand(
   // The proxy owns its own JsonlSink for proxy events; we open a
   // SECOND sink against the same path for chain + reconcile events.
   // Both use O_APPEND so kernel-level atomicity covers per-line writes.
-  const proxyHandle = await createProxy({ upstream, port, logPath });
+  const upstreamTimeoutMs =
+    opts.upstreamTimeoutMs ?? toIntOrNull(ctx.env.X402TRACE_UPSTREAM_TIMEOUT_MS) ?? undefined;
+  const proxyHandle = await createProxy({
+    upstream,
+    port,
+    logPath,
+    ...(upstreamTimeoutMs !== undefined ? { upstreamTimeoutMs } : {}),
+  });
   const sideSink = new JsonlSink(logPath);
   await sideSink.open();
 

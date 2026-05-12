@@ -39,7 +39,16 @@ export function createDogfoodApp(config: DogfoodConfig): Hono {
     ),
   );
 
-  app.get(config.protectedPath, (c) => {
+  app.get(config.protectedPath, async (c) => {
+    // X402-15 demo path: the x402 middleware has already run verify+settle
+    // by the time we get here — so a post-settle sleep / 500 reproduces
+    // the "settled-on-chain but client doesn't know it" symptom.
+    if (config.demoSleepMs && config.demoSleepMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, config.demoSleepMs));
+    }
+    if (config.demoFailAfterSleep) {
+      return c.json({ error: "demo: simulated post-settle server failure" }, 500);
+    }
     const body: DogfoodResponse = {
       endpoint: config.protectedPath,
       network: config.network,

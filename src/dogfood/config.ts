@@ -8,6 +8,21 @@ export interface DogfoodConfig {
   readonly priceUsd: `$${string}`;
   readonly protectedPath: string;
   readonly description: string;
+  /**
+   * X402-15 demo knob. When >0, the protected route handler sleeps for
+   * this many ms AFTER the x402 paymentMiddleware has run verify+settle.
+   * If a proxy in front of this server has a shorter `upstreamTimeoutMs`,
+   * the proxy gives up while settlement has already happened on-chain —
+   * the canonical timeout-reconciliation scenario.
+   */
+  readonly demoSleepMs?: number;
+  /**
+   * X402-15 demo knob. When true, after the post-settle sleep the
+   * route handler returns 500 instead of the normal 200 — simulates a
+   * server crash post-settle. The proxy classifies this as `unknown`
+   * outcome and the reconciliation engine still pends + matches.
+   */
+  readonly demoFailAfterSleep?: boolean;
 }
 
 export interface ClientConfig {
@@ -74,6 +89,13 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): DogfoodC
   } catch {
     throw new ConfigError(`FACILITATOR_URL is not a valid URL: ${facilitatorUrl}`);
   }
+  const demoSleepRaw = env.DEMO_SLEEP_MS;
+  const demoSleepMs = demoSleepRaw ? Number(demoSleepRaw) : undefined;
+  if (demoSleepRaw !== undefined && (!Number.isFinite(demoSleepMs) || demoSleepMs! < 0)) {
+    throw new ConfigError(`DEMO_SLEEP_MS must be a non-negative number (got '${demoSleepRaw}')`);
+  }
+  const demoFailAfterSleep =
+    env.DEMO_FAIL_AFTER_SLEEP === "1" || env.DEMO_FAIL_AFTER_SLEEP === "true";
   return {
     receiverAddress: receiver,
     network: REQUIRED_TESTNET_NETWORK,
@@ -81,6 +103,8 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): DogfoodC
     priceUsd: "$0.001",
     protectedPath: "/api/weather",
     description: "x402trace dogfood: Base Sepolia weather (testnet)",
+    ...(demoSleepMs !== undefined && demoSleepMs > 0 ? { demoSleepMs } : {}),
+    ...(demoFailAfterSleep ? { demoFailAfterSleep: true } : {}),
   };
 }
 
