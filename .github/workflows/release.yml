@@ -1,0 +1,72 @@
+name: Release
+
+# Tag-triggered publish workflow. Skeleton — the actual `NPM_TOKEN`
+# repo secret and the publish step are wired in [X402-19](https://vahdatfardin.atlassian.net/browse/X402-19),
+# which also picks the v0.1.0 cut. Until then this workflow runs the
+# same quality bar as CI on every tag push and stops short of
+# publishing.
+#
+# Tag convention: `v<MAJOR>.<MINOR>.<PATCH>` (semver). Tags should be
+# created off the `main` branch after a `release/x.y.z` PR merges.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Validate + publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      # `id-token: write` is what npm wants for provenance — keep it
+      # ready so X402-19 doesn't have to re-touch this file.
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.9.0
+          run_install: false
+
+      - name: Setup Node 20 + npm registry for publish
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Quality bar — typecheck + lint + tests
+        run: |
+          pnpm typecheck
+          pnpm lint
+          pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      # ─── X402-19 plumbing — leave commented until NPM_TOKEN lands ───
+      # The package.json `prepublishOnly` script already re-runs
+      # `pnpm test && pnpm build`, so the publish step itself stays one line.
+      #
+      # - name: Publish to npm
+      #   run: pnpm publish --access public --no-git-checks --provenance
+      #   env:
+      #     NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Tag dry-run notice (X402-19 will replace this with the real publish step)
+        run: |
+          echo "Tag $GITHUB_REF_NAME validated. Publish step is intentionally"
+          echo "stubbed until X402-19 wires NPM_TOKEN. See workflow comments."
