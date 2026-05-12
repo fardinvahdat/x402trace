@@ -90,7 +90,7 @@ Emitted when the proxy captures a response carrying an `X-PAYMENT-RESPONSE` (v1)
 
 ### `decoder.error`
 
-Emitted when a parse step fails. The proxy event still appears in the JSONL log; this event annotates *why* it couldn't be decoded so downstream tools can flag the exchange.
+Emitted when a parse step fails. The proxy event still appears in the JSONL log; this event annotates _why_ it couldn't be decoded so downstream tools can flag the exchange.
 
 ```json
 {
@@ -108,9 +108,9 @@ Emitted when a parse step fails. The proxy event still appears in the JSONL log;
 
 Two protocol surfaces are recognized:
 
-| Surface | Request header | Response header | `x402Version` body field |
-|---|---|---|---|
-| v1 | `X-PAYMENT` | `X-PAYMENT-RESPONSE` | `1` |
-| v2 | `PAYMENT-SIGNATURE` | `PAYMENT-RESPONSE` | `2` |
+| Surface | Request header      | Response header      | `x402Version` body field |
+| ------- | ------------------- | -------------------- | ------------------------ |
+| v1      | `X-PAYMENT`         | `X-PAYMENT-RESPONSE` | `1`                      |
+| v2      | `PAYMENT-SIGNATURE` | `PAYMENT-RESPONSE`   | `2`                      |
 
 v0.1 of x402trace normalizes both into the same `PaymentPayload` / `FacilitatorResponse` shape. The `x402Version` field on `exchange.challenge` and `exchange.payment` events records which surface was on the wire so downstream tooling can branch when needed.

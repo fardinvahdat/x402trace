@@ -1,6 +1,11 @@
 import { createPublicClient, decodeEventLog, http, type Hex, type Log, type Transport } from "viem";
 import { baseSepolia } from "viem/chains";
-import { AUTHORIZATION_USED_EVENT, BASE_SEPOLIA_USDC, USDC_TRANSFER_EVENT } from "./abi.js";
+import {
+  AUTHORIZATION_USED_EVENT,
+  BASE_SEPOLIA_USDC,
+  USDC_READ_ABI,
+  USDC_TRANSFER_EVENT,
+} from "./abi.js";
 import { withRetry } from "./retry.js";
 import type {
   Address,
@@ -300,11 +305,54 @@ export function createChainClient(opts: ChainClientOptions = {}): ChainClient {
     subscribers.clear();
   }
 
+  // ─── X402-21 v0.2 read-only pre-flight helpers ─────────────────
+  // Used by `validate`. All three are pure reads; never broadcast.
+
+  async function getUsdcBalance(wallet: Address): Promise<bigint> {
+    return withRetry(
+      () =>
+        client.readContract({
+          address: BASE_SEPOLIA_USDC,
+          abi: USDC_READ_ABI,
+          functionName: "balanceOf",
+          args: [wallet],
+        }) as Promise<bigint>,
+      { retries },
+    );
+  }
+
+  async function isNonceConsumed(authorizer: Address, nonce: Hex): Promise<boolean> {
+    return withRetry(
+      () =>
+        client.readContract({
+          address: BASE_SEPOLIA_USDC,
+          abi: USDC_READ_ABI,
+          functionName: "authorizationState",
+          args: [authorizer, nonce],
+        }) as Promise<boolean>,
+      { retries },
+    );
+  }
+
+  async function detectWalletKind(wallet: Address): Promise<"eoa" | "smart-wallet" | "unknown"> {
+    try {
+      const code = await withRetry(() => client.getCode({ address: wallet }), { retries });
+      // viem returns undefined for accounts with no code (EOA).
+      if (code === undefined || code === "0x") return "eoa";
+      return "smart-wallet";
+    } catch {
+      return "unknown";
+    }
+  }
+
   return {
     getTransferByTxHash,
     verifyTransfer,
     subscribeUsdcTransfers,
     getBlockNumber,
+    getUsdcBalance,
+    isNonceConsumed,
+    detectWalletKind,
     close,
   };
 }

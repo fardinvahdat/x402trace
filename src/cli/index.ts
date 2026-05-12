@@ -1,11 +1,13 @@
 /**
- * X402-14 CLI surface. Two subcommands:
+ * CLI surface. Four subcommands:
  *
- *   x402trace proxy --upstream <url> [--port 8402] [--log human|json] [--reconcile] …
- *   x402trace inspect <jsonl-log-file> [--log human|json] …
+ *   x402trace proxy    --upstream <url> [--reconcile] [--log human|json] …    (X402-14)
+ *   x402trace inspect  <jsonl-log-file> [--log human|json] …                  (X402-14)
+ *   x402trace validate <wallet> <service-url> [--strict] [--log human|json]   (X402-21 v0.2)
+ *   x402trace explain  <jsonl-log-file> [--log human|json]                    (X402-21 v0.2)
  *
  * `commander` does the parsing; we own the wiring + exit-code
- * discipline. See X402-14 Jira for acceptance criteria.
+ * discipline.
  *
  * `runCli` is the testable entry; `src/cli.ts` is the bin shim that
  * calls it with the real `process` handles.
@@ -14,8 +16,10 @@
 import "dotenv/config";
 import { Command } from "commander";
 import type { LogFormat } from "../decoder/types.js";
+import { runExplainCommand } from "./explain-command.js";
 import { runInspectCommand } from "./inspect-command.js";
 import { runProxyCommand } from "./proxy-command.js";
+import { runValidateCommand } from "./validate-command.js";
 import { EXIT_SUCCESS, EXIT_USAGE, type ExitCode } from "./exit-codes.js";
 
 // Keep in sync with package.json `version`. A runtime read from
@@ -24,7 +28,7 @@ import { EXIT_SUCCESS, EXIT_USAGE, type ExitCode } from "./exit-codes.js";
 // both `tsx src/cli.ts` (dev) and `dist/cli.js` (published) — folding
 // that into a follow-up cleanup. Until then, the X402-19 release
 // checklist + the changelog-cut step are the guards against drift.
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 
 export interface CliContext {
   readonly stdout: NodeJS.WritableStream;
@@ -53,6 +57,16 @@ interface ProxyFlags {
 interface InspectFlags {
   log?: string;
   watchTimeoutMs?: string;
+}
+
+interface ValidateFlags {
+  log?: string;
+  rpcUrl?: string;
+  strict?: boolean;
+}
+
+interface ExplainFlags {
+  log?: string;
 }
 
 export async function runCli(argv: readonly string[], ctx: CliContext): Promise<ExitCode> {
@@ -143,6 +157,51 @@ export async function runCli(argv: readonly string[], ctx: CliContext): Promise<
           ...(flags.watchTimeoutMs !== undefined
             ? { watchTimeoutMs: Number(flags.watchTimeoutMs) }
             : {}),
+        },
+        { stdout: ctx.stdout, stderr: ctx.stderr },
+      );
+    });
+
+  program
+    .command("validate")
+    .description(
+      "Pre-flight check: would <wallet> succeed paying <service-url>? Read-only, no signing.",
+    )
+    .argument("<wallet>", "Payer wallet address (0x-prefixed, 20 bytes)")
+    .argument("<service-url>", "Service URL that responds 402 with an x402 challenge")
+    .option("--log <human|json>", "Stdout format (default 'human')", validateLogFormat)
+    .option("--rpc-url <url>", "Base Sepolia RPC URL (env BASE_RPC_URL)")
+    .option(
+      "--strict",
+      "Treat `uncertain` (key chain checks skipped) as a failure — exit 2 instead of 0",
+    )
+    .action(async (wallet: string, service: string, flags: ValidateFlags) => {
+      const log = flags.log as LogFormat | undefined;
+      exit = await runValidateCommand(
+        {
+          wallet,
+          service,
+          ...(log !== undefined ? { log } : {}),
+          ...(flags.rpcUrl !== undefined ? { rpcUrl: flags.rpcUrl } : {}),
+          ...(flags.strict !== undefined ? { strict: flags.strict } : {}),
+        },
+        { stdout: ctx.stdout, stderr: ctx.stderr, env: ctx.env },
+      );
+    });
+
+  program
+    .command("explain")
+    .description(
+      "Plain-English diagnosis of every failed exchange in a captured JSONL log. Offline.",
+    )
+    .argument("<jsonl-log-file>", "Path to a JSONL log written by `x402trace proxy --reconcile`")
+    .option("--log <human|json>", "Stdout format (default 'human')", validateLogFormat)
+    .action(async (logFile: string, flags: ExplainFlags) => {
+      const log = flags.log as LogFormat | undefined;
+      exit = await runExplainCommand(
+        {
+          logFile,
+          ...(log !== undefined ? { log } : {}),
         },
         { stdout: ctx.stdout, stderr: ctx.stderr },
       );
