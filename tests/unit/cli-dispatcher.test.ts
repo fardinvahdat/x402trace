@@ -37,12 +37,14 @@ function makeCtx() {
 }
 
 describe("runCli — surface", () => {
-  it("--help exits 0 and lists both subcommands", async () => {
+  it("--help exits 0 and lists every subcommand", async () => {
     const ctx = makeCtx();
     const code = await runCli(["--help"], ctx);
     expect(code).toBe(0);
     expect(ctx._out.output).toMatch(/proxy/);
     expect(ctx._out.output).toMatch(/inspect/);
+    expect(ctx._out.output).toMatch(/validate/);
+    expect(ctx._out.output).toMatch(/explain/);
   });
 
   it("--version exits 0 and prints a semver-shaped string", async () => {
@@ -78,6 +80,37 @@ describe("runCli — surface", () => {
     expect(ctx._out.output).toContain("jsonl-log-file");
     expect(ctx._out.output).toContain("--log");
     expect(ctx._out.output).toContain("--watch-timeout-ms");
+  });
+
+  it("validate --help documents both positional args and the v0.2 options", async () => {
+    const ctx = makeCtx();
+    const code = await runCli(["validate", "--help"], ctx);
+    expect(code).toBe(0);
+    expect(ctx._out.output).toContain("wallet");
+    expect(ctx._out.output).toContain("service-url");
+    expect(ctx._out.output).toContain("--strict");
+    expect(ctx._out.output).toContain("--rpc-url");
+    expect(ctx._out.output).toContain("--log");
+  });
+
+  it("explain --help documents the JSONL argument", async () => {
+    const ctx = makeCtx();
+    const code = await runCli(["explain", "--help"], ctx);
+    expect(code).toBe(0);
+    expect(ctx._out.output).toContain("jsonl-log-file");
+    expect(ctx._out.output).toContain("--log");
+  });
+
+  it("validate without arguments exits with the usage code", async () => {
+    const ctx = makeCtx();
+    const code = await runCli(["validate"], ctx);
+    expect(code).toBe(1);
+  });
+
+  it("explain without arguments exits with the usage code", async () => {
+    const ctx = makeCtx();
+    const code = await runCli(["explain"], ctx);
+    expect(code).toBe(1);
   });
 
   it("proxy without --upstream exits with the usage code", async () => {
