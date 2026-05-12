@@ -1,95 +1,114 @@
 # x402trace
 
-> 🚧 **Pre-release.** v0.1 in active development. See [SPEC.md](./SPEC.md) and the [Jira board](https://vahdatfardin.atlassian.net/jira/software/projects/X402) for current status.
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
+[![CI](https://github.com/fardinvahdat/x402trace/actions/workflows/ci.yml/badge.svg?branch=v1)](https://github.com/fardinvahdat/x402trace/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/x402trace.svg)](https://www.npmjs.com/package/x402trace)
 
-Local CLI for debugging [x402](https://x402.org) payment flows on Base. Catches failure modes that cost real money — starting with **timeout reconciliation**, where the facilitator times out but the on-chain transaction settled anyway.
+**A local CLI that catches `x402` payment failures that cost real money** — starting with the [coinbase/x402 #1062](https://github.com/coinbase/x402/issues/1062) symptom: the buyer is debited on-chain, but the facilitator times out and your server thinks the payment failed.
 
 ---
 
-## The problem (v0.1 wedge)
+## The problem
 
-You integrate x402 on Base Sepolia. A request hits your facilitator. The facilitator times out. Your server returns 500. Your test wallet was debited anyway, the transaction is on-chain, and you have no recovery path. The logs tell you nothing useful.
+You wire up [x402](https://x402.org) on Base Sepolia. A buyer sends `X-PAYMENT`. The facilitator broadcasts the EIP-3009 `transferWithAuthorization` — and then hangs. Your `paymentMiddleware` times out and your client gets back:
 
-This is [coinbase/x402 #1062](https://github.com/coinbase/x402/issues/1062). **x402trace surfaces it in real time** so you know immediately when it happens — and gives you the on-chain transaction hash to reconcile.
+```
+HTTP/1.1 502 Bad Gateway
+content-type: text/plain
 
-## What x402trace does
+Bad Gateway
+```
 
-- Sits as a local proxy between your client and your x402 server
-- Decodes every `PAYMENT-REQUIRED` and `PAYMENT-RESPONSE` header into structured logs
-- Watches the facilitator response — if it times out or errors, x402trace queries Base directly to check whether the payment actually settled
-- Surfaces "settled but unconfirmed" payments with the tx hash so you can reconcile
+The buyer sees a failure. The buyer's wallet was actually debited. The on-chain receipt exists, but nothing in your logs points at it. You have no programmatic path to reconcile.
 
-## Quick demo
+This is the [#1062](https://github.com/coinbase/x402/issues/1062) gap. **x402trace closes it.**
+
+## 30-second quickstart
+
+> Requires Node ≥ 20, pnpm, and a Base Sepolia test wallet funded with USDC + dust ETH. See [`examples/README.md`](./examples/README.md) for the full prereq list.
 
 ```bash
-git clone https://github.com/fardinvahdat/x402trace.git && cd x402trace
+# 1. Install
+git clone https://github.com/fardinvahdat/x402trace.git
+cd x402trace
 pnpm install
 
-# populate .env with PAYER_PRIVATE_KEY (Base Sepolia testnet) and
-# RECEIVER_ADDRESS — see examples/README.md for the full prereq list.
+# 2. Populate .env (one-time)
+cp .env.example .env
+$EDITOR .env   # set PAYER_PRIVATE_KEY + RECEIVER_ADDRESS
+
+# 3. Run the canonical #1062 demo (real Base Sepolia, ~17s)
 ./examples/e2e-timeout-reconciliation.sh
 ```
 
-Under 40 seconds the demo:
+The last line of output is the detection x402trace was built for:
 
-1. Starts the dogfood server with a 10 s post-settle sleep + 500
-2. Starts `x402trace proxy --reconcile --upstream-timeout-ms 5000` in front of it
-3. Pays through the proxy with a real Base Sepolia signer
-4. The proxy times out, the facilitator already broadcast on-chain
-5. x402trace's chain subscription matches the EIP-3009 nonce and emits:
+```
+RECONCILED ⚠ settled-but-server-thinks-not  id=35d9aea1…
+  tx=0x116ccf73…  value=1000  payer=0xADEe…B895 → payee=0xADEe…B895  gap=11904ms
+```
 
-   ```
-   ⚠ RECONCILED  settled-but-server-thinks-not  tx=0x… value=1000 gap=…ms
-   ```
+That `tx=` field is a real Base Sepolia settlement — [view it on basescan](https://sepolia.basescan.org/tx/0x116ccf73fa77eda19aea149606042f1e848e8afe2f719a0d2890dd2b2ff0ba52). An asciinema replay of the full run is committed at [`examples/cast/e2e-timeout-reconciliation.cast`](./examples/cast/e2e-timeout-reconciliation.cast) — `asciinema play` it locally.
 
-That's the canonical [#1062](https://github.com/coinbase/x402/issues/1062) detection. See [examples/README.md](./examples/README.md) for prereqs, knobs, and asciinema recording.
+*Coming with v0.1.0:* `npx x402trace --help` from any directory. See the [Roadmap](#roadmap) below.
+
+## How it works
+
+```
+┌────────┐     ┌────────────┐     ┌──────────┐     ┌─────────────────────┐
+│ client │ ──► │ x402trace  │ ──► │  your    │ ──► │ x402.org/facilitator│
+└────────┘     │   proxy    │     │  server  │     └──────────┬──────────┘
+               └──────┬─────┘     └──────────┘                │
+                      │                 ▲                     │ /settle
+                      │                 │ slow/timeout      broadcasts
+                      │                 │                     ▼
+                      │           ┌─────┴────────┐     ┌──────────────┐
+                      │           │ reconcile    │ ◄── │ Base Sepolia │
+                      └──────────►│ engine       │     │ USDC Transfer│
+                                  └──────────────┘     └──────────────┘
+```
+
+- **Proxy** — sits between the client and your x402 server. Captures every `X-PAYMENT` / `X-PAYMENT-RESPONSE` header to a JSONL log.
+- **Decoder** — turns each captured request into structured `PaymentRequirements` / `PaymentPayload` / `FacilitatorResponse` records.
+- **Chain client** — subscribes to Base Sepolia USDC `Transfer` events, enriches each with the matching EIP-3009 `AuthorizationUsed.nonce`.
+- **Reconciliation engine** — joins facilitator-rejected exchanges against on-chain transfers by `(payer, payee, value, nonce)` and emits `settled_on_chain` / `not_settled` / `value_mismatch` / `recipient_mismatch`.
+
+Full architecture: [ARCHITECTURE.md](./ARCHITECTURE.md). Wedge rationale: [DECISIONS.md → ADR-001](./DECISIONS.md). On-disk schema: [`src/decoder/schema.md`](./src/decoder/schema.md).
 
 ## CLI
 
 ```bash
-x402trace proxy --upstream <url> --reconcile        # live capture + reconciliation
-x402trace inspect <jsonl-log-file>                  # replay a captured log offline
-x402trace --help
+x402trace proxy   --upstream <url> [--reconcile] [--log human|json] …
+x402trace inspect <jsonl-log-file> [--log human|json] …
 ```
 
-## Status
-
-| Item | State |
-| --- | --- |
-| v0.1 spec | ✅ Locked — see [SPEC.md](./SPEC.md) |
-| Architecture | ✅ Locked — see [ARCHITECTURE.md](./ARCHITECTURE.md) |
-| Implementation | Week 3 complete — proxy, decoder, chain client, reconciliation engine, CLI, e2e demo all shipped (X402-10..15) |
-| First release | Target: 6 weeks from project start |
+The authoritative flag list is `x402trace --help` / `x402trace proxy --help` / `x402trace inspect --help` — they're the source of truth and are wired into the unit tests. See also [`pnpm x402trace --help`](./src/cli/index.ts) directly in the repo.
 
 ## Roadmap
 
-See [SPEC.md](./SPEC.md) for full scope. Short version:
+**v0.1** (current, ~6 weeks from project start) — local proxy + timeout reconciliation + structured logs. Base Sepolia, `x402.org/facilitator`, `exact` EVM scheme only. Detect-and-notify, no auto-refund. Wedge accepted in [ADR-001](./DECISIONS.md).
 
-- **v0.1** — Local proxy + timeout reconciliation + structured logs (Base only, testnet-validated)
-- **v0.2** — TBD based on dogfooding (see [DECISIONS.md](./DECISIONS.md) → ADR-002)
+**v0.2 stretch** (from [SPEC.md § 5](./SPEC.md#5-v02-stretch-deferred-not-killed), ordered by ranked dogfood pain):
 
-## Install
+- Mainnet (after ≥1 week of clean testnet traffic)
+- `x402trace inspect <captured-402.json>` — pure-function offline 402 decode
+- `x402trace doctor <wallet> <service>` — pre-flight wallet/service check
+- `x402trace bazaar-check` — Bazaar indexing diagnostics
+- `x402trace versions` — SDK-skew audit across `x402`, `x402-fetch`, facilitator
+- Multi-facilitator support (CDP, PayAI, x402-rs)
+- Reconciliation **actions** beyond JSONL (webhook, structured remediation)
 
-```bash
-# When v0.1 is released:
-npx x402trace --help
-```
+## Differentiation
 
-Nothing installable yet. Watch the GitHub releases page or the Jira board for v0.1.0.
-
-## Why not just use x402scan / xpay / x402lint?
-
-Different problem. Those are great for general inspection and routing. x402trace is for the specific moment when your payment vanished into the gap between facilitator and chain — which is when you most need a debugger and least have one.
-
-See `SPEC.md → Differentiation` (once written) for details.
+`x402scan` / `xpay` / `x402lint` are excellent at general inspection and routing. x402trace is for the narrow, expensive moment when your payment vanished into the gap between facilitator and chain — when you most need a debugger and least have one. Full comparison in [SPEC.md § 8](./SPEC.md#8-differentiation).
 
 ## Contributing
 
 Personal project. PRs and bug reports welcome. Read in this order:
 
-1. [CLAUDE.md](./CLAUDE.md) — the operating manual
-2. [TESTING.md](./TESTING.md) — **testing is a hard requirement**, not a nice-to-have
-3. [CONTRIBUTING.md](./CONTRIBUTING.md) — workflow
+1. [CLAUDE.md](./CLAUDE.md) — operating manual + hard rules
+2. [TESTING.md](./TESTING.md) — testing is a hard requirement, not a nice-to-have
+3. [CONTRIBUTING.md](./CONTRIBUTING.md) — branching + PR workflow
 
 ## License
 
