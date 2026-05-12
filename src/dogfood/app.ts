@@ -40,12 +40,18 @@ export function createDogfoodApp(config: DogfoodConfig): Hono {
   );
 
   app.get(config.protectedPath, async (c) => {
-    // X402-15 demo path: the x402 middleware has already run verify+settle
-    // by the time we get here — so a post-settle sleep / 500 reproduces
-    // the "settled-on-chain but client doesn't know it" symptom.
+    // X402-15 demo path: x402-hono verifies BEFORE this handler and
+    // settles AFTER it returns a 2xx. A long handler sleep + a shorter
+    // proxy upstream timeout = buyer-facing 502 while settlement is
+    // still pending; once the handler returns 200, /settle fires and
+    // the on-chain transfer lands.
     if (config.demoSleepMs && config.demoSleepMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, config.demoSleepMs));
     }
+    // `demoFailAfterSleep` is a documented FAILURE path — x402-hono
+    // skips /settle on 5xx, so this branch produces a `not_settled`
+    // result, not the canonical `settled_on_chain` warning. See
+    // DogfoodConfig.demoFailAfterSleep for details.
     if (config.demoFailAfterSleep) {
       return c.json({ error: "demo: simulated post-settle server failure" }, 500);
     }

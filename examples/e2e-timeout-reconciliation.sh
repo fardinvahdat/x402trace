@@ -142,10 +142,18 @@ wait_for_port() {
   return 1
 }
 
-# ---------- step 1: dogfood server with post-settle sleep + 500 ----------
-cyan "── (1) dogfood server with DEMO_SLEEP_MS=${SLEEP_MS} + DEMO_FAIL_AFTER_SLEEP=1 ──"
+# ---------- step 1: dogfood server with mid-handler sleep ----------
+# The x402-hono paymentMiddleware verifies BEFORE the handler runs and
+# settles AFTER the handler returns. A handler sleep > proxy timeout
+# means: client gets 502 (proxy gave up), server still completes
+# /settle in the background, on-chain Transfer lands → reconciliation
+# engine catches it.
+#
+# We deliberately do NOT use DEMO_FAIL_AFTER_SLEEP here: x402-hono
+# treats a 5xx response as a settlement skip, which would defeat the
+# whole point of the demo.
+cyan "── (1) dogfood server with DEMO_SLEEP_MS=${SLEEP_MS} (no post-sleep fail) ──"
 DEMO_SLEEP_MS="$SLEEP_MS" \
-DEMO_FAIL_AFTER_SLEEP=1 \
 DOGFOOD_PORT="$SERVER_PORT" \
 pnpm --silent dogfood:server >"$SERVER_STDOUT" 2>&1 &
 SERVER_PID=$!
@@ -154,7 +162,7 @@ green "  server up on http://localhost:$SERVER_PORT  (pid=$SERVER_PID)"
 
 # ---------- step 2: x402trace proxy --reconcile in front ----------
 cyan "── (2) x402trace proxy --reconcile (upstream timeout ${PROXY_TIMEOUT_MS}ms) ──"
-pnpm --silent x402trace -- proxy \
+pnpm --silent x402trace proxy \
   --upstream "http://localhost:$SERVER_PORT" \
   --port "$PROXY_PORT" \
   --reconcile \

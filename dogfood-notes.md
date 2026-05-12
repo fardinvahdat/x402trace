@@ -516,3 +516,51 @@ Five candidates surfaced. **Not picking** — picked in [X402-7](https://vahdatf
 ## Decision
 
 Picked in [X402-7](https://vahdatfardin.atlassian.net/browse/X402-7) → recorded as ADR-001 in [DECISIONS.md](./DECISIONS.md).
+
+---
+
+## Live e2e timeout-reconciliation capture (X402-15, 2026-05-12)
+
+The flagship demo — `examples/e2e-timeout-reconciliation.sh` — run end-to-end against real Base Sepolia + `x402.org/facilitator`. This is the canonical proof that x402trace surfaces the [coinbase/x402 #1062](https://github.com/coinbase/x402/issues/1062) symptom in production.
+
+### Choreography (timing observed)
+
+| t (s) | Event |
+|---|---|
+| 0.000 | Client signs EIP-3009 `transferWithAuthorization`, POSTs `X-PAYMENT` through the local proxy |
+| 0.000 | Proxy forwards to dogfood server |
+| 0.0–~1 | Server's `paymentMiddleware` calls `x402.org/facilitator` `/verify` (success) |
+| ~1 | Server's protected route handler starts (`DEMO_SLEEP_MS=10000`) |
+| 5.004 | Proxy's `--upstream-timeout-ms 5000` fires → returns `502` to client, emits `upstream_timeout` outcome |
+| ~11 | Server route handler wakes; middleware calls `/settle` → facilitator broadcasts `transferWithAuthorization` |
+| ~14 | On-chain block mines the Transfer event |
+| 16.908 | Chain client poll picks up Transfer + `AuthorizationUsed` from the same tx, joins on nonce |
+| 16.908 | Engine emits `RECONCILED ⚠ settled-but-server-thinks-not` |
+
+**Total reconcile gap (proxy timeout → chain-detected):** 11.9 s.
+
+### On-chain evidence
+
+- tx hash: [`0x116ccf73fa77eda19aea149606042f1e848e8afe2f719a0d2890dd2b2ff0ba52`](https://sepolia.basescan.org/tx/0x116ccf73fa77eda19aea149606042f1e848e8afe2f719a0d2890dd2b2ff0ba52)
+- block: 41402768
+- contract: `0x036CbD53842c5426634e7929541eC2318f3dCF7e` (Base Sepolia USDC)
+- function: `transferWithAuthorization` (selector `0xe3ee160e`)
+- broadcaster (gas-payer): `0xd407e409e34e0b9afb99ecceb609bdbcd5e7f1bf` (the x402.org/facilitator's operator)
+- EIP-3009 nonce: `0x9b1edb59b07f6f80ac3aaf45f8e62b9f33b56aaf99c79a40d9ba01ed5edd61c1` *(decoded; matches what the proxy logged and what the engine joined on)*
+
+### Verbatim CLI output (the X-post headline line)
+
+```
+[2026-05-12T08:46:23.…Z] RECONCILED ⚠ settled-but-server-thinks-not
+  id=35d9aea1…  tx=0x116ccf73…  value=1000
+  payer=0xADEe…B895 → payee=0xADEe…B895  gap=11904ms
+```
+
+The asciinema cast is committed at `examples/cast/e2e-timeout-reconciliation.cast` — replay locally with `asciinema play examples/cast/e2e-timeout-reconciliation.cast`.
+
+### Subtleties learned the hard way
+
+1. **`DEMO_FAIL_AFTER_SLEEP=1` defeats the demo.** `x402-hono@1.2.0` skips `/settle` when the protected handler returns a 5xx. The on-chain transfer never happens, the engine eventually fires `not_settled` instead of `settled_on_chain`. The committed demo uses sleep-only; the failure path stays for future negative tests.
+2. **`pnpm <script> -- <args>` swallows the first arg in pnpm 10.x.** The shell driver uses `pnpm --silent x402trace proxy …` (no `--`) — that's how pnpm forwards arguments to scripts in current releases.
+3. **`payer === payee` is fine for the demo.** The test wallet pays itself; the engine still matches because match-key is `(from, to, value, nonce)` and EIP-3009 nonces are unique per payer. Set `RECEIVER_ADDRESS` to a different address in `.env` to make the demo more visually distinct.
+4. **The Transfer event polling latency dominates the reconcile gap.** `subscribeUsdcTransfers` polls every ~4 s by default; on Base Sepolia (~2 s blocks) the engine sees the Transfer roughly one poll cycle after the tx mines. Lower `pollIntervalMs` to tighten the gap; lower than ~2 s wastes RPC calls.

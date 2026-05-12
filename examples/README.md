@@ -69,18 +69,26 @@ Total runtime: ~25–40 seconds depending on chain congestion + RPC responsivene
 | `DEMO_WAIT_BUDGET` | `90` | Seconds the shell will wait for the `RECONCILED` line before bailing |
 | `DEMO_LOG_FILE` | `${TMPDIR}/x402trace-e2e-$$.jsonl` | JSONL output path |
 
-### Recording the asciinema for the X post
+### Recorded cast
+
+A reference run is committed at [`examples/cast/e2e-timeout-reconciliation.cast`](./cast/e2e-timeout-reconciliation.cast). Replay locally:
 
 ```bash
-# install asciinema once
-brew install asciinema  # or `pipx install asciinema`
+brew install asciinema  # one-time install
+asciinema play examples/cast/e2e-timeout-reconciliation.cast
+```
 
-# record straight into the docs folder
-asciinema rec -t "x402trace v0.1 — catches a settled-on-chain timeout" \
+The committed cast was recorded on 2026-05-12 against real Base Sepolia + the production `x402.org/facilitator`; the on-chain settlement is [`0x116ccf73…ba52`](https://sepolia.basescan.org/tx/0x116ccf73fa77eda19aea149606042f1e848e8afe2f719a0d2890dd2b2ff0ba52). See [`dogfood-notes.md` § Live e2e timeout-reconciliation capture](../dogfood-notes.md#live-e2e-timeout-reconciliation-capture-x402-15-2026-05-12) for the full transcript + timing breakdown.
+
+To re-record after changes (use this before the X-post):
+
+```bash
+asciinema rec --overwrite \
+              -t "x402trace v0.1 — catches a settled-on-chain timeout" \
               examples/cast/e2e-timeout-reconciliation.cast \
               -c "./examples/e2e-timeout-reconciliation.sh"
 
-# embed into a tweet via asciinema.org/upload
+# upload for a tweet-embeddable URL:
 asciinema upload examples/cast/e2e-timeout-reconciliation.cast
 ```
 
