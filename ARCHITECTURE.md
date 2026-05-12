@@ -75,10 +75,11 @@ Five components, each as its own folder under `src/`. Names are **final** — th
 
 ### CLI driver (`src/cli/`) — [X402-14](https://vahdatfardin.atlassian.net/browse/X402-14)
 
-- Two subcommands: `proxy` and `reconcile`.
+- Two subcommands: `proxy` (live) and `inspect` (offline JSONL replay).
 - Wires the four components together based on flags. No business logic of its own.
 - Handles signals (SIGINT/SIGTERM) → flush JSONL → exit cleanly.
-- Output: stdout for human-friendly summary lines (per [SPEC.md § 3 user flow](./SPEC.md#3-user-flow)); JSONL for the canonical record.
+- Output: stdout for human-friendly summary lines (per [SPEC.md § 3 user flow](./SPEC.md#3-user-flow)); JSONL for the canonical record. Stdout colour is auto-detected from TTY + honours `NO_COLOR`. `--log json` renders one JSON object per line for grep / `jq`.
+- Exit codes: `0` success, `1` usage error (bad flags, missing args, unreadable log), `2` runtime error (proxy crash, RPC failure).
 
 ---
 
@@ -233,7 +234,7 @@ The proxy + decoder + chain + reconciler all append to one JSONL file. Every lin
 | `reconcile.result` | Reconciliation engine | `ReconciliationResult` flattened |
 | `proxy.error` | Any | `id?`, `message`, `stack?` |
 
-Downstream tooling (`x402trace reconcile --log <file>`, future v0.2 features) reads only the JSONL. **The file IS the API.** Breaking changes to this shape require a new ADR.
+Downstream tooling (`x402trace inspect <jsonl-log-file>`, future v0.2 features) reads only the JSONL. **The file IS the API.** Breaking changes to this shape require a new ADR.
 
 ---
 

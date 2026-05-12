@@ -54,7 +54,7 @@ x402trace/
     ├── decoder/        — x402 message decoding + structured logger [shipped X402-11]
     ├── chain/          — Base RPC client (viem) [shipped X402-12]
     ├── reconciliation/ — timeout reconciliation engine [shipped X402-13]
-    └── cli/            — CLI entry point [X402-14]
+    └── cli/            — CLI entry point [shipped X402-14]
 ```
 
 There is also a non-published `src/dogfood/` (X402-3 test rig — Hono server + mock facilitator + http-adapter) used only by tests and `pnpm dogfood:*` scripts.

@@ -22,6 +22,7 @@
     "dogfood:mock-facilitator": "tsx scripts/mock-facilitator.ts",
     "dogfood:failure-modes": "tsx scripts/failure-modes.ts",
     "proxy": "tsx scripts/proxy.ts",
+    "x402trace": "tsx src/cli.ts",
     "decoder:demo": "tsx scripts/decoder-demo.ts",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -74,6 +75,7 @@
     "vitest": "^3.0.0"
   },
   "dependencies": {
+    "commander": "^14.0.3",
     "dotenv": "^17.4.2",
     "hono": "^4.12.18",
     "viem": "^2.48.11",
