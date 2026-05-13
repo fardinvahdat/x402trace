@@ -11,6 +11,27 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 —
 
+## [0.2.1] — 2026-05-13
+
+Documentation + discoverability patch. **No functional changes from 0.2.0** — same CLI behaviour, same diagnostic rules, same chain client. The bump exists so npm refreshes its search index with the new `description` + `keywords` (npm only re-indexes on publish).
+
+### Changed
+
+- **`package.json` `description`** — was "Local CLI for debugging x402 payment flows on Base — catches timeout reconciliation failures"; now "x402 payment debugger for Base. Detects reconciliation failures, pre-flights wallets, explains 402s." Surfaces all three product capabilities in npm search instead of just reconciliation.
+- **`package.json` `keywords`** (9 → 14) — added `http-402`, `base-sepolia`, `payment-debugging`, `timeout-reconciliation`, `eip-3009`, `facilitator`, `coinbase-x402`, `agentic-payments`; removed redundant `debugging` / vague `observability` / misleading `ethereum` (Base is an L2).
+- **README** — added four discoverability blocks for human + AI-agent readers:
+  - "When to use x402trace" — 4 problem-statement bullets, each pattern-matching an AI agent's reasoning loop ("wallet debited but server says failed" → `proxy --reconcile`, etc.)
+  - "The four subcommands at a glance" — ASCII lifecycle visual keying `validate` / `proxy` / `inspect` / `explain` to the BEFORE / DURING / POST / FAILURE phases of a payment
+  - Concrete terminal output blocks for `validate` and `explain` so devs + AI agents can verify-before-install
+  - Comparison table vs `xpay` / `x402scan` / `x402lint` (replaces the previous prose paragraph)
+  - 4-question FAQ in the Q&A pattern AI tool-cards quote into recommendation snippets
+- **`VERSION` constant** in `src/cli/index.ts` bumped 0.2.0 → 0.2.1 (kept in sync with `package.json`).
+
+### Notes
+
+- The live tx hash [`0x116ccf73…ba52`](https://sepolia.basescan.org/tx/0x116ccf73fa77eda19aea149606042f1e848e8afe2f719a0d2890dd2b2ff0ba52) is now above the fold in the README so crawlers / GEO snippets have a verifiable on-chain anchor.
+- Release workflow's `contents: write` permission (fixed for v0.1.0) means this tag-push self-creates the GitHub Release without manual intervention.
+
 ## [0.2.0] — 2026-05-12
 
 The v0.2 pre/post-payment debugger. v0.1 owned mid-flight (proxy) + post-settlement (reconcile); v0.2 adds pre-flight (`validate`) and offline failure diagnosis (`explain`), sharing a new pure rule engine in `src/diagnose/`. Closes pain ranks #3 (generic 402 with no error reason) and #4 (wallet-state pre-flight gap) from the X402-6 ranking. 278 tests, same Base Sepolia / `exact` EVM scope as v0.1 per [ADR-002](./DECISIONS.md#adr-002-v02-feature-pick--validate-primary--explain-paired). Apache-2.0.
@@ -89,6 +110,7 @@ The v0.1 wedge: a local proxy + timeout-reconciliation engine that catches the c
 
 ---
 
-[Unreleased]: https://github.com/fardinvahdat/x402trace/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/fardinvahdat/x402trace/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.2.1
 [0.2.0]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.2.0
 [0.1.0]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.1.0
