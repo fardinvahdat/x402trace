@@ -1,0 +1,41 @@
+# Dependabot config — automates weekly transitive-CVE awareness.
+#
+# Strategy:
+#   - npm runtime + dev deps: weekly, grouped to reduce PR noise.
+#     - dev-dependencies: bundle all minor/patch into one PR.
+#     - production-patch:  bundle production-dep patches into one PR
+#       (no minor on production — review those individually).
+#   - All semver-major bumps are ignored. Major version moves require
+#     human review of the changelog; Dependabot would just churn.
+#   - github-actions: monthly, ungrouped. Low volume, low risk.
+#
+# Mondays were chosen for npm updates so triage lands at the start of
+# the week. open-pull-requests-limit: 5 caps the maximum noise.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+        update-types:
+          - "minor"
+          - "patch"
+      production-patch:
+        dependency-type: "production"
+        update-types:
+          - "patch"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3

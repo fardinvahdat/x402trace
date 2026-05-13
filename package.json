@@ -1,6 +1,6 @@
 {
   "name": "x402trace",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "x402 payment debugger for Base. Detects reconciliation failures, pre-flights wallets, explains 402s.",
   "type": "module",
   "bin": {
@@ -36,7 +36,8 @@
     "lint:fix": "eslint . --fix && prettier --write \"{src,scripts,tests,api}/**/*.ts\" \"*.json\" \"*.js\"",
     "lint:docs": "echo 'TODO: wire up markdown lint in X402-2'",
     "lint:links": "echo 'TODO: wire up link checker in X402-2'",
-    "prepublishOnly": "pnpm test && pnpm build"
+    "prepublishOnly": "pnpm test && pnpm build && node scripts/check-publish-surface.mjs",
+    "check:publish-surface": "node scripts/check-publish-surface.mjs"
   },
   "keywords": [
     "x402",
@@ -74,18 +75,18 @@
     "@typescript-eslint/parser": "^8.0.0",
     "@vitest/coverage-v8": "^3.0.0",
     "eslint": "^9.0.0",
+    "hono": "^4.12.18",
     "prettier": "^3.3.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "x402-fetch": "^1.2.0",
+    "x402-hono": "^1.2.0"
   },
   "dependencies": {
     "commander": "^14.0.3",
     "dotenv": "^17.4.2",
-    "hono": "^4.12.18",
     "viem": "^2.48.11",
-    "x402": "^1.2.0",
-    "x402-fetch": "^1.2.0",
-    "x402-hono": "^1.2.0"
+    "x402": "^1.2.0"
   }
 }

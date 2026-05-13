@@ -59,3 +59,10 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: Verify publish surface
+        # Caps the npm pack size + entry count and forbids any dist/
+        # file from importing a devDependency. Prevents the v0.2.2
+        # mistake (test-only deps classified as runtime) from coming
+        # back. See scripts/check-publish-surface.mjs for the limits.
+        run: node scripts/check-publish-surface.mjs
