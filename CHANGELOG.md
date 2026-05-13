@@ -11,6 +11,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 —
 
+## [0.2.2] — 2026-05-13
+
+Docs-only patch: ships the three animated GIF demos to the npm package page (npmjs.com only re-renders the README on publish). No functional changes from 0.2.1.
+
+### Changed
+
+- **README hero is now a live animated GIF** — the X402-15 reconciliation demo, generated from the committed asciinema cast via `agg`. Renders inline on github.com, npmjs.com, and any markdown viewer (256 KB, under X / Twitter's 15 MB cap).
+- **`validate` and `explain` example sections** each now include their own demo GIF (27 KB + 36 KB) above the existing text-output blocks. Text blocks remain for AI-agent quoting and `grep`-friendly inspection.
+- Three new committed asciinema source casts under `examples/cast/` (`e2e-timeout-reconciliation.cast`, `validate-demo.cast`, `explain-demo.cast`) — replayable with `asciinema play`.
+
 ## [0.2.1] — 2026-05-13
 
 Documentation + discoverability patch. **No functional changes from 0.2.0** — same CLI behaviour, same diagnostic rules, same chain client. The bump exists so npm refreshes its search index with the new `description` + `keywords` (npm only re-indexes on publish).
@@ -110,7 +120,8 @@ The v0.1 wedge: a local proxy + timeout-reconciliation engine that catches the c
 
 ---
 
-[Unreleased]: https://github.com/fardinvahdat/x402trace/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/fardinvahdat/x402trace/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.2.2
 [0.2.1]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.2.1
 [0.2.0]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.2.0
 [0.1.0]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.1.0
