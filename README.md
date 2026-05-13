@@ -181,6 +181,9 @@ Yes — `x402trace validate <wallet> <service-url>` is read-only. It fetches the
 **Q: Does this work on mainnet?**
 Not yet — v0.2 is Base Sepolia only per [ADR-002](./DECISIONS.md#adr-002-v02-feature-pick--validate-primary--explain-paired). Mainnet support is on the v0.3 stretch list, gated on ≥1 week of clean testnet traffic.
 
+**Q: My supply-chain scanner shows transitive alerts on dependencies. Are these in x402trace?**
+No. As of v0.2.3 the runtime tree is `commander` + `dotenv` + `viem` + `x402` only — the published `dist/` imports nothing else. The test-tooling deps (`hono`, `x402-fetch`, `x402-hono`) are `devDependencies` and are not installed by `npm i x402trace`. Any wallet-SDK / WalletConnect / MetaMask transitives a scanner shows on the package come in via `viem` (read-only chain client). See [SECURITY.md](./SECURITY.md) to report a vulnerability in x402trace itself.
+
 ## Roadmap
 
 - **v0.1.0** (2026-05-12) — local proxy + timeout reconciliation. [ADR-001](./DECISIONS.md#adr-001-v01-wedge).

@@ -564,3 +564,23 @@ The asciinema cast is committed at `examples/cast/e2e-timeout-reconciliation.cas
 2. **`pnpm <script> -- <args>` swallows the first arg in pnpm 10.x.** The shell driver uses `pnpm --silent x402trace proxy …` (no `--`) — that's how pnpm forwards arguments to scripts in current releases.
 3. **`payer === payee` is fine for the demo.** The test wallet pays itself; the engine still matches because match-key is `(from, to, value, nonce)` and EIP-3009 nonces are unique per payer. Set `RECEIVER_ADDRESS` to a different address in `.env` to make the demo more visually distinct.
 4. **The Transfer event polling latency dominates the reconcile gap.** `subscribeUsdcTransfers` polls every ~4 s by default; on Base Sepolia (~2 s blocks) the engine sees the Transfer roughly one poll cycle after the tx mines. Lower `pollIntervalMs` to tighten the gap; lower than ~2 s wastes RPC calls.
+
+---
+
+## Community surface log (post-v0.2.x distribution)
+
+Paper-trail of where x402trace got mentioned in publicly-discoverable places, so we can see what drove inbound (issues / installs / inquiries) over time.
+
+| Date | Channel | Link | Context |
+|---|---|---|---|
+| 2026-05-13 | npm | [`x402trace@0.2.x`](https://www.npmjs.com/package/x402trace) | Published with provenance; description + 14 keywords tuned for discoverability |
+| 2026-05-13 | GitHub Release | [v0.1.0](https://github.com/fardinvahdat/x402trace/releases/tag/v0.1.0), [v0.2.0](https://github.com/fardinvahdat/x402trace/releases/tag/v0.2.0), [v0.2.1](https://github.com/fardinvahdat/x402trace/releases/tag/v0.2.1), [v0.2.2](https://github.com/fardinvahdat/x402trace/releases/tag/v0.2.2) | Release workflow auto-creates the GitHub Release with CHANGELOG section |
+| 2026-05-13 | awesome-x402 (primary) | [xpaysh/awesome-x402#373](https://github.com/xpaysh/awesome-x402/pull/373) | PR adding x402trace under `🔨 Tools & Utilities → CLI Tools` (208⭐ list) |
+| 2026-05-13 | awesome-x402 (secondary) | [Merit-Systems/awesome-x402#232](https://github.com/Merit-Systems/awesome-x402/pull/232) | PR adding x402trace under `Ecosystem` (120⭐ list) |
+| 2026-05-13 | X / Twitter | [@Fardin_Vahdat thread](https://x.com/Fardin_Vahdat/status/2054493053755310155) | Launch thread; 3 tweets, hero GIF on the first |
+| 2026-05-13 | GitHub: canonical issue | [x402-foundation/x402#1062 comment](https://github.com/x402-foundation/x402/issues/1062#issuecomment-4439930133) | Comment on @lpender's canonical reconciliation-bug issue framing x402trace as detection-tool implementation of their proposed solution #3 |
+
+| 2026-05-13 | GitHub: related issue (`explain` audience) | [x402-foundation/x402#2255 comment](https://github.com/x402-foundation/x402/issues/2255#issuecomment-4440004247) | Comment on @mikeg7998's "CDP /verify rejects v2 X-PAYMENT with generic 402" — positions `x402trace explain` for the multi-day-debug-chain pattern |
+| 2026-05-13 | GitHub: related issue (`validate` audience) | [x402-foundation/x402#2110 comment](https://github.com/x402-foundation/x402/issues/2110#issuecomment-4440008361) | Comment on @bytetang's "CDP rejects Coinbase Smart Wallet (ERC-6492)" — positions `x402trace validate` as the client-side-vs-CDP-side isolator |
+| 2026-05-13 | GitHub: related issue (`proxy --reconcile` audience) | [x402-foundation/x402#1805 comment](https://github.com/x402-foundation/x402/issues/1805#issuecomment-4440020845) | Comment on @sellis's "concurrent x402 reuses one settlement proof" — frames the bug as the inverse of #1062 and the proxy/JSONL log as the audit trail for refund flows |
+| 2026-05-13 | Coinbase Developer Platform Discord | [`#x402` post](https://discordapp.com/channels/1220414409550336183/1369344440237424670/1504071638306525361) | X402-24 launch post. Includes pointers to the 4 GitHub-issue comments and the X thread as activity signal. |

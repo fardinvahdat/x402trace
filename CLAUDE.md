@@ -34,6 +34,8 @@ Canonical reference: [coinbase/x402 Issue #1062](https://github.com/coinbase/x40
 
 7. **One thing per PR.** If a PR description has the word "also", split it.
 
+8. **The published bundle defines the runtime dependency set.** Anything imported by code in `dist/` (whatever `tsconfig.build.json` emits) belongs in `dependencies`. Anything that exists only in `src/dogfood/`, `scripts/`, or `tests/` belongs in `devDependencies`. The `scripts/check-publish-surface.mjs` CI step enforces this; if it fails, the fix is to reclassify, not to suppress. See [v0.2.3 supply-chain post-mortem context](./CHANGELOG.md) for the original violation (`hono`/`x402-fetch`/`x402-hono` ship as `dependencies` in v0.2.2 despite zero imports from `dist/`, dragging the wallet-SDK transitive tree — and its CVE list — into every end-user install).
+
 ## Project structure
 
 ```
@@ -65,15 +67,15 @@ There is also a non-published `src/dogfood/` (X402-3 test rig — Hono server + 
 
 ## Where to look first
 
-| Question | File |
-| --- | --- |
-| What is x402? | [coinbase/x402 README](https://github.com/coinbase/x402), [x402.org](https://x402.org) |
-| What is the wedge? | [SPEC.md](./SPEC.md) — v0.1 implementation spec (Week-2 output, [X402-8](https://vahdatfardin.atlassian.net/browse/X402-8)). Read first before any Week-3+ ticket. |
-| Why this approach? | [DECISIONS.md](./DECISIONS.md) |
-| What pain are we solving? | [dogfood-notes.md](./dogfood-notes.md) — **start with § [Top painful moments](./dogfood-notes.md#top-painful-moments-synthesized---x402-6) and § [Wedge candidates](./dogfood-notes.md#wedge-candidates) (the X402-6 synthesis: 9 ranked pains + 5 candidate wedges)** |
-| How do components fit together? | [ARCHITECTURE.md](./ARCHITECTURE.md) — 5 components (Proxy / Decoder / Chain / Reconciliation / CLI), the TypeScript interfaces at the boundaries, the JSONL record format. Read before any build ticket in X402-10..14. |
-| What's in the JSONL log on disk? | [src/decoder/schema.md](./src/decoder/schema.md) — authoritative shape of every `event:` discriminant the decoder emits. The file IS the API; breaking the shape requires a new ADR. |
-| How do I test? | [TESTING.md](./TESTING.md) |
+| Question                         | File                                                                                                                                                                                                                                                                   |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| What is x402?                    | [coinbase/x402 README](https://github.com/coinbase/x402), [x402.org](https://x402.org)                                                                                                                                                                                 |
+| What is the wedge?               | [SPEC.md](./SPEC.md) — v0.1 implementation spec (Week-2 output, [X402-8](https://vahdatfardin.atlassian.net/browse/X402-8)). Read first before any Week-3+ ticket.                                                                                                     |
+| Why this approach?               | [DECISIONS.md](./DECISIONS.md)                                                                                                                                                                                                                                         |
+| What pain are we solving?        | [dogfood-notes.md](./dogfood-notes.md) — **start with § [Top painful moments](./dogfood-notes.md#top-painful-moments-synthesized---x402-6) and § [Wedge candidates](./dogfood-notes.md#wedge-candidates) (the X402-6 synthesis: 9 ranked pains + 5 candidate wedges)** |
+| How do components fit together?  | [ARCHITECTURE.md](./ARCHITECTURE.md) — 5 components (Proxy / Decoder / Chain / Reconciliation / CLI), the TypeScript interfaces at the boundaries, the JSONL record format. Read before any build ticket in X402-10..14.                                               |
+| What's in the JSONL log on disk? | [src/decoder/schema.md](./src/decoder/schema.md) — authoritative shape of every `event:` discriminant the decoder emits. The file IS the API; breaking the shape requires a new ADR.                                                                                   |
+| How do I test?                   | [TESTING.md](./TESTING.md)                                                                                                                                                                                                                                             |
 
 ## Branching strategy
 
