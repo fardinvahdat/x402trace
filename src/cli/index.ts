@@ -28,7 +28,7 @@ import { EXIT_SUCCESS, EXIT_USAGE, type ExitCode } from "./exit-codes.js";
 // both `tsx src/cli.ts` (dev) and `dist/cli.js` (published) — folding
 // that into a follow-up cleanup. Until then, the X402-19 release
 // checklist + the changelog-cut step are the guards against drift.
-const VERSION = "0.2.2";
+const VERSION = "0.2.3";
 
 export interface CliContext {
   readonly stdout: NodeJS.WritableStream;

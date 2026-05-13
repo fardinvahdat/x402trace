@@ -11,6 +11,34 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 —
 
+## [0.2.3] — 2026-05-13
+
+Supply-chain hardening patch. **No functional changes from 0.2.2** — same CLI behaviour, same diagnostic rules, same chain client, same shipped binary (`dist/`). The bump exists to publish a cleaner install graph and to ship two community files that supply-chain scanners reward.
+
+### Changed
+
+- **`hono`, `x402-fetch`, `x402-hono` reclassified from `dependencies` to `devDependencies` (X402-26).** These three packages are imported only by `src/dogfood/`, `scripts/`, and `tests/` — paths excluded from `tsconfig.build.json` and therefore from the published `dist/`. The shipped tarball is byte-for-byte equivalent to 0.2.2's; the only thing that changes is what `npm i x402trace` pulls into a consumer's `node_modules/`. End-user install graph drops the entire WalletConnect / MetaMask SDK / safe-global transitive tree (the source of the 4 high + 10 medium CVE alerts on the [Socket report for 0.2.2](https://socket.dev/npm/package/x402trace)).
+- **`src/cli/index.ts` `VERSION` constant** bumped 0.2.2 → 0.2.3 (kept in sync with `package.json`).
+
+### Added
+
+- **`CODE_OF_CONDUCT.md`** — Contributor Covenant v2.1 verbatim, contact pointed at the repo's private vulnerability reporting + maintainer email (X402-26).
+- **`SECURITY.md`** — vulnerability reporting channels, response targets, scope, and an explicit "what x402trace does/doesn't do" section so reporters know what's in-bounds (X402-26).
+- **README supply-chain FAQ** — one new Q&A pair pre-empting "my scanner shows transitive alerts on x402trace deps" by naming the runtime tree (`commander` + `dotenv` + `viem` + `x402`) and pointing wallet-SDK transitives to their actual source (X402-26).
+- **CI publish-surface guard (X402-27)** — new `scripts/check-publish-surface.mjs` runs after `pnpm build` in CI + locally via `pnpm check:publish-surface` + as part of `prepublishOnly`. Caps the bundle at 100 files / 400 KB unpacked and forbids any file in `dist/` from importing a package listed in `devDependencies`. Locks in the X402-26 fix so dep classification can't quietly drift back.
+- **Dependabot config (X402-28)** — weekly grouped npm updates (Mondays; dev-deps + production-patches bundled, semver-majors ignored) plus monthly ungrouped GitHub Actions updates. Gives us a weekly heads-up when an upstream ships a CVE patch instead of waiting for an external scanner.
+- **CLAUDE.md hard rule #8 (X402-29)** — "The published bundle defines the runtime dependency set." Codifies the X402-26 lesson so future sessions don't recreate the misclassification.
+
+### Security
+
+- Eliminates the wallet-SDK transitive tree (`@walletconnect/*`, `@metamask/sdk`, `@safe-global/*`) from end-user installs of `x402trace`. The CVE alerts those packages carry are still real — they're just no longer dragged into `node_modules/` for a CLI that doesn't use them. Anyone running the dogfood rig or contributing locally still gets them via `devDependencies`.
+
+### Notes
+
+- The `dist/` is byte-for-byte the same shape as 0.2.2: 74 files, ~222 KB unpacked. Verified locally + enforced by the publish-surface CI guard going forward.
+- Socket score recalibration takes a few hours after publish; Snyk a day. Predicted lift: Socket Supply Chain Security 77 → 90+, Snyk Health 27 → 35-45.
+- Five tickets in the v0.2.3 batch: [X402-26](https://vahdatfardin.atlassian.net/browse/X402-26), [X402-27](https://vahdatfardin.atlassian.net/browse/X402-27), [X402-28](https://vahdatfardin.atlassian.net/browse/X402-28), [X402-29](https://vahdatfardin.atlassian.net/browse/X402-29), [X402-30](https://vahdatfardin.atlassian.net/browse/X402-30) (this release cut).
+
 ## [0.2.2] — 2026-05-13
 
 Docs-only patch: ships the three animated GIF demos to the npm package page (npmjs.com only re-renders the README on publish). No functional changes from 0.2.1.
@@ -120,7 +148,8 @@ The v0.1 wedge: a local proxy + timeout-reconciliation engine that catches the c
 
 ---
 
-[Unreleased]: https://github.com/fardinvahdat/x402trace/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/fardinvahdat/x402trace/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.2.3
 [0.2.2]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.2.2
 [0.2.1]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.2.1
 [0.2.0]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.2.0
