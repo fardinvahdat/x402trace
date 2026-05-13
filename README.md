@@ -6,6 +6,10 @@
 
 **A local CLI debugger for [`x402`](https://x402.org) — the HTTP-402-based agentic-payment protocol** — on Base. Verified against real Base Sepolia + the production `x402.org/facilitator`, three independent live reconciliations on-chain (latest: [`0x116ccf73…ba52`](https://sepolia.basescan.org/tx/0x116ccf73fa77eda19aea149606042f1e848e8afe2f719a0d2890dd2b2ff0ba52)).
 
+![x402trace catching a real Base Sepolia timeout-reconciliation failure end-to-end](./examples/cast/e2e-timeout-reconciliation.gif)
+
+*Real-time capture of the `RECONCILED ⚠ settled-but-server-thinks-not` detection against live Base Sepolia + `x402.org/facilitator`. ~17 seconds, real on-chain tx. Cast file replayable with `asciinema play examples/cast/e2e-timeout-reconciliation.cast`.*
+
 ## When to use x402trace
 
 - **Your buyer's wallet was debited but the server says payment failed** — the canonical [coinbase/x402#1062](https://github.com/coinbase/x402/issues/1062) reconciliation gap. [`x402trace proxy --reconcile`](#cli) detects it in seconds against live USDC `Transfer` events; `x402trace inspect` replays captured logs offline.
@@ -128,6 +132,8 @@ The authoritative flag list is `x402trace --help` (or per-subcommand `--help`) �
 
 ### `validate` — example output
 
+![x402trace validate against a live Base Sepolia wallet — all 10 rules pass](./examples/cast/validate-demo.gif)
+
 ```
 $ x402trace validate 0xADEeaf70…B895 https://example.com/api/weather
 
@@ -146,6 +152,8 @@ diagnose: ✓ would succeed
 A failing run flips the headline to `✗ would fail` and prints a `fix:` line under each failed rule.
 
 ### `explain` — example output
+
+![x402trace explain on a captured JSONL log — flags an expired validBefore with the actionable fix](./examples/cast/explain-demo.gif)
 
 ```
 $ x402trace explain ./x402trace.jsonl
