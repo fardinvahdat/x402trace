@@ -36,7 +36,8 @@
     "lint:fix": "eslint . --fix && prettier --write \"{src,scripts,tests,api}/**/*.ts\" \"*.json\" \"*.js\"",
     "lint:docs": "echo 'TODO: wire up markdown lint in X402-2'",
     "lint:links": "echo 'TODO: wire up link checker in X402-2'",
-    "prepublishOnly": "pnpm test && pnpm build"
+    "prepublishOnly": "pnpm test && pnpm build && node scripts/check-publish-surface.mjs",
+    "check:publish-surface": "node scripts/check-publish-surface.mjs"
   },
   "keywords": [
     "x402",
