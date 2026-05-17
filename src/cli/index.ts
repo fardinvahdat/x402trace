@@ -67,6 +67,8 @@ interface ValidateFlags {
   rpcUrl?: string;
   chain?: string;
   strict?: boolean;
+  diff?: string;
+  diffTimeoutMs?: string;
 }
 
 interface ExplainFlags {
@@ -212,6 +214,14 @@ export async function runCli(argv: readonly string[], ctx: CliContext): Promise<
       "--strict",
       "Treat `uncertain` (key chain checks skipped) as a failure — exit 2 instead of 0",
     )
+    .option(
+      "--diff <facilitators>",
+      "Cross-facilitator drift: comma-separated list of aliases (cdp, xpay, payai, x402.org) OR full URLs. Runs /verify against each in parallel and reports drift.",
+    )
+    .option(
+      "--diff-timeout-ms <n>",
+      "Per-facilitator /verify timeout in --diff mode (default 10000)",
+    )
     .action(async (wallet: string, service: string, flags: ValidateFlags) => {
       const log = flags.log as LogFormat | undefined;
       const chain = flags.chain as "base-sepolia" | "base" | undefined;
@@ -223,6 +233,10 @@ export async function runCli(argv: readonly string[], ctx: CliContext): Promise<
           ...(flags.rpcUrl !== undefined ? { rpcUrl: flags.rpcUrl } : {}),
           ...(chain !== undefined ? { chain } : {}),
           ...(flags.strict !== undefined ? { strict: flags.strict } : {}),
+          ...(flags.diff !== undefined ? { diff: flags.diff } : {}),
+          ...(flags.diffTimeoutMs !== undefined
+            ? { diffTimeoutMs: Number(flags.diffTimeoutMs) }
+            : {}),
         },
         { stdout: ctx.stdout, stderr: ctx.stderr, env: ctx.env },
       );
