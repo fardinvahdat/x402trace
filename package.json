@@ -1,6 +1,6 @@
 {
   "name": "x402trace",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "description": "x402 payment debugger for Base. Detects reconciliation failures, pre-flights wallets, explains 402s.",
   "type": "module",
   "bin": {
