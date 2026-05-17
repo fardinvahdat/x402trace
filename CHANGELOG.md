@@ -9,7 +9,16 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-—
+### Added
+
+- **Five facilitator-aware diagnose rules (X402-33)** in `src/diagnose/rules.ts`, each backed by named voices from the Discord transcript or GitHub Issues per [ADR-003](./DECISIONS.md):
+  - `cdp-min-amount` — flags CDP-facilitator payments below the documented $0.001 USDC minimum (1000 atomic units). Surfaces the silent `invalid_payload` rejection akiyama lost multiple days to.
+  - `self-payment` — flags `payer == payTo` configurations. CDP rejects these with a generic `invalid_payload`; TerraDeed had to switch CDP → xpay to clear it.
+  - `facilitator-throttling` — flags HTTP 403/429 from the facilitator. Recommends exponential backoff. Pattern reported by tanissian in Discord.
+  - `extension-responses-missing` — flags successful `/settle` responses missing the `EXTENSION-RESPONSES` header (the canonical [#2207](https://github.com/x402-foundation/x402/issues/2207) cluster, 6+ reporters). Fires only when callers set `expectsBazaarExtensions: true` so non-bazaar `explain`/`validate` runs see no spurious fails.
+  - `gas-estimation-failure` — flags facilitator responses containing `"unable to estimate gas"` (the intermittent Base-mainnet flake in [#1065](https://github.com/x402-foundation/x402/issues/1065) — 40% failure rate with identical code; Dev.to confirms ~60%).
+- **`FacilitatorInteraction` type + `DiagnosticContext.facilitator` field + `DiagnosticContext.expectsBazaarExtensions` flag** in `src/diagnose/types.ts`. Populated by callers that drive facilitator HTTP themselves (`bazaar-check`, `validate --diff`); not yet captured in the JSONL event shape, so rules skip cleanly in `explain`-style replays. Documented in `src/decoder/schema.md`.
+- **26 new unit tests** in `tests/unit/diagnose-rules.test.ts` (≥5 per rule, all three of pass / fail / skip covered).
 
 ## [0.2.3] — 2026-05-13
 
