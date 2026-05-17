@@ -24,6 +24,7 @@
  */
 
 import { createChainClient, type Address, type ChainClient } from "../chain/index.js";
+import { parseChainOrUndefined } from "./chain-flag.js";
 import { parseChallengeBody } from "../decoder/parse.js";
 import type { LogFormat, PaymentPayload, PaymentRequirements } from "../decoder/types.js";
 import { diagnose, formatReportHuman, formatReportJson } from "../diagnose/index.js";
@@ -36,6 +37,12 @@ export interface ValidateCommandOptions {
   readonly service?: string;
   readonly log?: LogFormat;
   readonly rpcUrl?: string;
+  /**
+   * Chain selection per ADR-003. Default `"base-sepolia"`. `"base"`
+   * enables Base mainnet support; an RPC URL must be supplied (no
+   * default mainnet endpoint).
+   */
+  readonly chain?: "base-sepolia" | "base";
   /**
    * When true, the "uncertain" overall status (key chain checks
    * skipped) exits 2 instead of 0. Default false — `uncertain` is a
@@ -51,9 +58,11 @@ export interface ValidateRunContext {
   readonly color?: Colorizer;
   /**
    * Injectable chain-client factory so tests can mock without standing
-   * up a real Base Sepolia RPC. Defaults to `createChainClient`.
+   * up a real RPC. Receives the resolved `chain` and `rpcUrl` (both
+   * possibly undefined) so tests can assert mainnet routing without
+   * touching the network. Defaults to `createChainClient`.
    */
-  readonly chainFactory?: (rpcUrl?: string) => ChainClient;
+  readonly chainFactory?: (rpcUrl?: string, chain?: "base-sepolia" | "base") => ChainClient;
   /** Injectable fetch for the 402 GET. Defaults to global `fetch`. */
   readonly fetch?: typeof fetch;
   /** Injectable clock for deterministic tests. */
@@ -141,8 +150,18 @@ export async function runValidateCommand(
   };
 
   // ─── Step 3: query on-chain wallet state ───────────────────────
-  const chainFactory = ctx.chainFactory ?? createChainClient;
-  const chain = chainFactory(opts.rpcUrl ?? ctx.env.BASE_RPC_URL);
+  const chainKey: "base-sepolia" | "base" =
+    opts.chain ?? parseChainOrUndefined(ctx.env.BASE_CHAIN_ID) ?? "base-sepolia";
+  if (chainKey === "base") {
+    ctx.stderr.write(
+      `${color.paint("yellow", "⚠ MAINNET (chain=base):")} querying Base mainnet USDC for ${wallet}\n`,
+    );
+  }
+  const chainFactory =
+    ctx.chainFactory ??
+    ((rpcUrl?: string, c?: "base-sepolia" | "base") =>
+      createChainClient({ ...(rpcUrl ? { rpcUrl } : {}), ...(c ? { chain: c } : {}) }));
+  const chain = chainFactory(opts.rpcUrl ?? ctx.env.BASE_RPC_URL, chainKey);
   let walletState: WalletState;
   try {
     const [balance, nonceConsumed, walletKind] = await Promise.all([

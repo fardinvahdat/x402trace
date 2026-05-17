@@ -1,23 +1,41 @@
 import { createPublicClient, decodeEventLog, http, type Hex, type Log, type Transport } from "viem";
-import { baseSepolia } from "viem/chains";
+import { base, baseSepolia } from "viem/chains";
 import {
   AUTHORIZATION_USED_EVENT,
-  BASE_SEPOLIA_USDC,
   USDC_READ_ABI,
   USDC_TRANSFER_EVENT,
+  usdcAddressFor,
 } from "./abi.js";
 import { withRetry } from "./retry.js";
 import type {
   Address,
   ChainClient,
   ChainClientOptions,
+  ChainKey,
   ChainTransfer,
   VerifyTransferOptions,
   VerifyTransferResult,
 } from "./types.js";
 
-const DEFAULT_RPC_URL = "https://sepolia.base.org";
+const DEFAULT_SEPOLIA_RPC_URL = "https://sepolia.base.org";
 const DEFAULT_POLL_INTERVAL_MS = 4_000;
+
+/**
+ * No default mainnet RPC URL by design (CLAUDE.md hard rule #2). Throws
+ * a clear, actionable error when `chain: "base"` is requested without
+ * a user-supplied `rpcUrl` (or `transport` test escape).
+ */
+function resolveRpcUrl(chain: ChainKey, rpcUrl: string | undefined): string {
+  if (rpcUrl) return rpcUrl;
+  if (chain === "base") {
+    throw new Error(
+      "Base mainnet requires an explicit RPC URL: pass `rpcUrl` to createChainClient, " +
+        "or set the BASE_RPC_URL env / --rpc-url flag at the CLI. " +
+        "No default mainnet endpoint is shipped (CLAUDE.md hard rule #2).",
+    );
+  }
+  return DEFAULT_SEPOLIA_RPC_URL;
+}
 
 function isNotFoundError(err: unknown): boolean {
   if (!(err instanceof Error)) return false;
@@ -33,14 +51,28 @@ function isNotFoundError(err: unknown): boolean {
 }
 
 /**
- * Build a read-only chain client for Base Sepolia. Never holds private
- * keys; never broadcasts transactions. Only reads logs + receipts.
+ * Build a read-only chain client for Base Sepolia or Base mainnet (per
+ * ADR-003). Never holds private keys; never broadcasts transactions.
+ * Only reads logs + receipts.
+ *
+ * The chain selection drives THREE things: (1) the viem chain object
+ * used for transport, (2) the USDC contract address everywhere a
+ * Transfer/AuthorizationUsed event or `balanceOf`/`authorizationState`
+ * read is performed, and (3) the RPC URL default (Sepolia has one;
+ * mainnet requires an explicit URL — CLAUDE.md hard rule #2).
  */
 export function createChainClient(opts: ChainClientOptions = {}): ChainClient {
+  const chainKey: ChainKey = opts.chain ?? "base-sepolia";
+  const viemChain = chainKey === "base" ? base : baseSepolia;
+  const usdcAddress = usdcAddressFor(chainKey);
+  // Mainnet RPC guard: throw early on construction if mainnet is
+  // requested without an RPC URL AND no transport escape (tests).
+  const hasTransportEscape = opts.transport !== undefined;
+  const rpcUrl = hasTransportEscape ? "" : resolveRpcUrl(chainKey, opts.rpcUrl);
   const transport: Transport =
     (opts.transport as Transport | undefined) ??
-    http(opts.rpcUrl ?? DEFAULT_RPC_URL, { timeout: opts.rpcTimeoutMs ?? 30_000 });
-  const client = createPublicClient({ chain: baseSepolia, transport });
+    http(rpcUrl, { timeout: opts.rpcTimeoutMs ?? 30_000 });
+  const client = createPublicClient({ chain: viemChain, transport });
   const retries = opts.retries ?? 3;
 
   const subscribers = new Set<{ stop: () => void }>();
@@ -50,7 +82,7 @@ export function createChainClient(opts: ChainClientOptions = {}): ChainClient {
   }
 
   function findTransferLog(logs: readonly Log[], expectedToken?: Address) {
-    const tokenFilter = (expectedToken ?? BASE_SEPOLIA_USDC).toLowerCase();
+    const tokenFilter = (expectedToken ?? usdcAddress).toLowerCase();
     for (const log of logs) {
       if (log.address.toLowerCase() !== tokenFilter) continue;
       try {
@@ -71,7 +103,7 @@ export function createChainClient(opts: ChainClientOptions = {}): ChainClient {
   }
 
   function findAuthorizationNonce(logs: readonly Log[], expectedToken?: Address): Hex | undefined {
-    const tokenFilter = (expectedToken ?? BASE_SEPOLIA_USDC).toLowerCase();
+    const tokenFilter = (expectedToken ?? usdcAddress).toLowerCase();
     for (const log of logs) {
       if (log.address.toLowerCase() !== tokenFilter) continue;
       try {
@@ -136,7 +168,7 @@ export function createChainClient(opts: ChainClientOptions = {}): ChainClient {
       from: found.from,
       to: found.to,
       value: found.value,
-      tokenAddress: (expectedToken ?? BASE_SEPOLIA_USDC) as Address,
+      tokenAddress: (expectedToken ?? usdcAddress) as Address,
       ...(nonce ? { authorizationNonce: nonce } : {}),
     };
   }
@@ -149,7 +181,7 @@ export function createChainClient(opts: ChainClientOptions = {}): ChainClient {
   }
 
   async function verifyTransfer(opts: VerifyTransferOptions): Promise<VerifyTransferResult> {
-    const expectedToken = (opts.expectedToken ?? BASE_SEPOLIA_USDC) as Address;
+    const expectedToken = (opts.expectedToken ?? usdcAddress) as Address;
     // buildTransferFromReceipt returns null for not-found / non-success
     // receipts; only rethrows on unrecoverable RPC errors, which we let
     // bubble up to the caller.
@@ -249,7 +281,7 @@ export function createChainClient(opts: ChainClientOptions = {}): ChainClient {
         const logs = await withRetry(
           () =>
             client.getLogs({
-              address: BASE_SEPOLIA_USDC,
+              address: usdcAddress,
               event: USDC_TRANSFER_EVENT,
               fromBlock,
               toBlock,
@@ -312,7 +344,7 @@ export function createChainClient(opts: ChainClientOptions = {}): ChainClient {
     return withRetry(
       () =>
         client.readContract({
-          address: BASE_SEPOLIA_USDC,
+          address: usdcAddress,
           abi: USDC_READ_ABI,
           functionName: "balanceOf",
           args: [wallet],
@@ -325,7 +357,7 @@ export function createChainClient(opts: ChainClientOptions = {}): ChainClient {
     return withRetry(
       () =>
         client.readContract({
-          address: BASE_SEPOLIA_USDC,
+          address: usdcAddress,
           abi: USDC_READ_ABI,
           functionName: "authorizationState",
           args: [authorizer, nonce],
