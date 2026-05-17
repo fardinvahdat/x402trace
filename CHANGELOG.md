@@ -11,6 +11,39 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 —
 
+## [0.3.0] — 2026-05-17
+
+The v0.3 release. Operator-side debugging cut: x402trace can now answer the question Discord operators are asking each other in real time — _"is my Bazaar / agentic.market integration correct, or is the bug upstream of me?"_ — in a 30-second command-line check. Same shipped binary contract as v0.2.x (no breaking changes to existing subcommands); two new subcommands; five new facilitator-aware diagnose rules; Base mainnet support behind an opt-in `--chain` flag; cross-facilitator drift detection on `validate`. Strict 6-stage audit gate ran on every ticket (X402-31..36).
+
+### Added
+
+- **`x402trace bazaar-check <service-url>` (X402-32, headline).** Pre-ship Bazaar / agentic.market implementation validator. Four read-only checks compose into a single bottom-line verdict: `/.well-known/x402` manifest, 402 challenge structure (`extensions.bazaar.{name, description}`), self-payment guard (`--payer-hint`), and CDP indexing query (`/v2/x402/discovery/resources`). Exit codes: `0` looks_correct, `2` implementation_issue, `3` upstream_issue (the [#2207](https://github.com/x402-foundation/x402/issues/2207) Bazaar-indexing pattern; named explicitly in the verdict prose). Maps the dominant Discord pain — ≥10 named voices on the #2207 cluster.
+- **`x402trace validate --diff <facilitators>` (X402-35).** Cross-facilitator drift detection. Comma-separated aliases (`cdp`, `xpay`, `payai`, `x402.org`) OR full URLs. Runs the synthesised payload through each facilitator's `/verify` endpoint in parallel via `Promise.all`, captures per-facilitator HTTP into a `FacilitatorInteraction`, and runs the X402-33 facilitator-aware rules per-facilitator. Exit codes: `0` any_accepts, `2` all_reject, `3` all_timeout. Closes TerraDeed's CDP → xpay manual workaround (Discord transcript) and [#2184](https://github.com/x402-foundation/x402/issues/2184) (PayAI + Python SDK 2.9.0).
+- **`x402trace versions <service-url>` (X402-36, stretch).** SDK skew audit. Walks up from cwd for `package.json` and extracts `@x402/*` / `x402-*` / `x402` versions; fetches the service URL's 402 for `x402Version` + `Server` header hints; matches both against a bundled known-skew dataset (`@x402/fetch@2.10.0` extension echo bug, `@x402/hono` `syncFacilitatorOnStart` default, pre-v2 Python SDK bazaar emission). Exit `0` no skew / `2` skew detected. Closes Myceliaman14 + Poteshniy's Discord chases.
+- **Five new facilitator-aware diagnose rules (X402-33).** `cdpMinAmountRule`, `selfPaymentRule`, `facilitatorThrottlingRule`, `extensionResponsesMissingRule`, `gasEstimationFailureRule`. Each backed by named Discord/GitHub voices per [ADR-003](./DECISIONS.md). New `FacilitatorInteraction` type + `DiagnosticContext.facilitator` + `DiagnosticContext.expectsBazaarExtensions` fields. Rules skip cleanly when their context fields are absent.
+- **Base mainnet support (X402-34).** New `--chain <base-sepolia|base>` flag on `proxy`, `inspect`, `validate`, `bazaar-check`, `versions`. Default stays `base-sepolia` (no surprise change). `--chain base` switches to Base mainnet (chain ID 8453) with the canonical mainnet USDC address (`0x833589fCD…`). Mainnet RPC URL must be supplied via `--rpc-url` or `BASE_RPC_URL` env; **no default mainnet endpoint is shipped** (CLAUDE.md hard rule #2). New `BASE_CHAIN_ID` env (accepts `"base"`/`"base-sepolia"` OR numeric `"8453"`/`"84532"`, case-insensitive). Mainnet startup banner emits to stdout (human) or stderr (JSON). New `ChainKey` exported type, `BASE_USDC` constant, `usdcAddressFor()` helper.
+- **`EXIT_UPSTREAM = 3` exit code constant** in `src/cli/exit-codes.ts`. Distinguishes "upstream issue detected" (bazaar-check, validate --diff all-timeout) from "implementation issue" (`EXIT_RUNTIME = 2`) and "usage error" (`EXIT_USAGE = 1`).
+- **ADR-003 in DECISIONS.md (X402-31).** v0.3 feature pick + autonomous-mode strict 6-stage audit gate codification. The gate substitutes for user review during autonomous execution; every PR in v0.3 ran through Pre-work → Implementation → Correctness audit → Edge-case enumeration → Re-audit → Ship.
+- **CLAUDE.md hard rule #8 + "Strict audit gate" section.** Codifies the gate so future sessions follow it.
+- **Cross-platform evidence base.** Plan and ADR-003 cite Discord transcript (10+ named voices on Bazaar indexing failures), GitHub issues ([#2207](https://github.com/x402-foundation/x402/issues/2207) cluster, [#1065](https://github.com/x402-foundation/x402/issues/1065), [#2294](https://github.com/x402-foundation/x402/issues/2294)), Dev.to article, and agentic.market directory.
+
+### Changed
+
+- **CLAUDE.md hard rule #2** updated from "Testnet only until v0.1 ships" to "No committed mainnet RPC URLs" (v0.3 enables mainnet code; CI never uses mainnet).
+- **`src/cli/index.ts` `VERSION` constant** bumped 0.2.3 → 0.3.0 (kept in sync with `package.json`).
+
+### Deferred to v0.3.1+
+
+- **Paid-pass mode (`--with-wallet`) in `bazaar-check`** — requires signing infrastructure (changes ADR-001 read-only contract) or pre-signed payload pipeline. Static-analysis-only bazaar-check ships now; real-settlement EXTENSION-RESPONSES surfacing is detectable via X402-33's `extensionResponsesMissingRule` for callers that drive their own facilitator HTTP.
+- **SLA-breach observation event (X402-37)** — single Discord voice + schema-change risk failed the strict-bar; deferred until a 2nd named operator surfaces independently. Hikari is shipping Recourse as the enforcement product.
+- **ERC-6492 Smart Wallet support, reconciliation webhook/auto-retry, `extensions.diagnostic` decoder (gated on PR [#1875](https://github.com/x402-foundation/x402/pull/1875)), `tokenNameMismatchRule`, `repeatedNonceRule`, daemon mode, audit export, multi-chain (non-Base), hosted SaaS** — all listed in [ADR-003](./DECISIONS.md) with documented deferral reasons.
+
+### Notes
+
+- **278 → 408 tests** (+130 new across X402-31..36). One pre-existing flake in `tests/integration/demo-timeout-reconciliation.test.ts:114` (50ms `setTimeout` race under full-suite parallel load) hit once on X402-33's first run; passed on rerun. Pre-existing — not introduced by v0.3.
+- **Tarball size:** 74 files / 222 KB unpacked at v0.2.3 → **96 files / 335 KB unpacked at v0.3.0**. Well under the 400 KB CI guard cap.
+- **Runtime `dependencies` count unchanged** from v0.2.3 (4: `commander`, `dotenv`, `viem`, `x402`). No supply-chain expansion.
+
 ## [0.2.3] — 2026-05-13
 
 Supply-chain hardening patch. **No functional changes from 0.2.2** — same CLI behaviour, same diagnostic rules, same chain client, same shipped binary (`dist/`). The bump exists to publish a cleaner install graph and to ship two community files that supply-chain scanners reward.
@@ -148,7 +181,8 @@ The v0.1 wedge: a local proxy + timeout-reconciliation engine that catches the c
 
 ---
 
-[Unreleased]: https://github.com/fardinvahdat/x402trace/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/fardinvahdat/x402trace/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.3.0
 [0.2.3]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.2.3
 [0.2.2]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.2.2
 [0.2.1]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.2.1

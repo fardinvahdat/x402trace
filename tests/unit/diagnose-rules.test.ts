@@ -10,18 +10,27 @@ import { describe, expect, it } from "vitest";
 import {
   ALL_RULES,
   assetAddressRule,
+  cdpMinAmountRule,
   diagnose,
+  extensionResponsesMissingRule,
+  facilitatorThrottlingRule,
+  gasEstimationFailureRule,
   networkMatchRule,
   nonceFreshRule,
   payerBalanceRule,
   recipientMatchRule,
   schemeMatchRule,
+  selfPaymentRule,
   validAfterRule,
   validBeforeRule,
   valueSufficientRule,
   walletKindRule,
 } from "../../src/diagnose/rules.js";
-import type { DiagnosticContext, DiagnosticRule } from "../../src/diagnose/types.js";
+import type {
+  DiagnosticContext,
+  DiagnosticRule,
+  FacilitatorInteraction,
+} from "../../src/diagnose/types.js";
 import type { PaymentPayload, PaymentRequirements } from "../../src/decoder/types.js";
 
 const PAYER = "0xADEeaf70FE6fcBD42D926E4159c25d7fc85eB895" as const;
@@ -258,11 +267,225 @@ describe("assetAddressRule", () => {
   });
 });
 
+// ─── X402-33 facilitator-aware rules ────────────────────────────────
+
+function facilitator(over: Partial<FacilitatorInteraction> = {}): FacilitatorInteraction {
+  return {
+    stage: "settle",
+    statusCode: 200,
+    url: "https://x402.org/facilitator",
+    response: { success: true, isValid: true },
+    headers: {},
+    ...over,
+  };
+}
+
+describe("cdpMinAmountRule", () => {
+  it("skips when no facilitator URL is in context", () => {
+    const r = runRule(cdpMinAmountRule, {});
+    expect(r.status).toBe("skip");
+  });
+  it("skips when the facilitator is not CDP", () => {
+    const r = runRule(cdpMinAmountRule, {
+      facilitator: facilitator({ url: "https://x402.org/facilitator" }),
+    });
+    expect(r.status).toBe("skip");
+  });
+  it("passes when CDP facilitator and amount is at the documented minimum (1000 atomic)", () => {
+    const r = runRule(cdpMinAmountRule, {
+      facilitator: facilitator({ url: "https://api.cdp.coinbase.com/v2/x402" }),
+      requirements: requirements({ maxAmountRequired: "1000" }),
+    });
+    expect(r.status).toBe("pass");
+  });
+  it("fails when CDP facilitator and amount is below 1000 atomic ($0.001)", () => {
+    const r = runRule(cdpMinAmountRule, {
+      facilitator: facilitator({ url: "https://api.cdp.coinbase.com/v2/x402" }),
+      requirements: requirements({ maxAmountRequired: "200" }),
+    });
+    expect(r.status).toBe("fail");
+    expect(r.fix).toMatch(/maxAmountRequired/);
+  });
+  it("is case-insensitive about the CDP host", () => {
+    const r = runRule(cdpMinAmountRule, {
+      facilitator: facilitator({ url: "https://api.CDP.COINBASE.COM/v2/x402" }),
+      requirements: requirements({ maxAmountRequired: "500" }),
+    });
+    expect(r.status).toBe("fail");
+  });
+});
+
+describe("selfPaymentRule", () => {
+  it("skips when there's no payment payload", () => {
+    const r = runRule(selfPaymentRule, {});
+    expect(r.status).toBe("skip");
+  });
+  it("passes when payer differs from payTo", () => {
+    const r = runRule(selfPaymentRule, { payment: payment() });
+    expect(r.status).toBe("pass");
+  });
+  it("fails when payer equals payTo (TerraDeed's CDP rejection case)", () => {
+    const r = runRule(selfPaymentRule, {
+      payment: payment({ from: PAYEE }),
+    });
+    expect(r.status).toBe("fail");
+    expect(r.fix).toMatch(/different wallet|xpay/i);
+  });
+  it("is case-insensitive about address comparison", () => {
+    const r = runRule(selfPaymentRule, {
+      requirements: requirements({ payTo: PAYEE.toLowerCase() }),
+      payment: payment({ from: PAYEE.toUpperCase() }),
+    });
+    expect(r.status).toBe("fail");
+  });
+});
+
+describe("facilitatorThrottlingRule", () => {
+  it("skips when no facilitator interaction is in context", () => {
+    const r = runRule(facilitatorThrottlingRule, {});
+    expect(r.status).toBe("skip");
+  });
+  it("passes when facilitator returned a non-throttle status (200)", () => {
+    const r = runRule(facilitatorThrottlingRule, {
+      facilitator: facilitator({ statusCode: 200 }),
+    });
+    expect(r.status).toBe("pass");
+  });
+  it("fails when facilitator returned 403", () => {
+    const r = runRule(facilitatorThrottlingRule, {
+      facilitator: facilitator({ statusCode: 403 }),
+    });
+    expect(r.status).toBe("fail");
+    expect(r.fix).toMatch(/backoff|back off|exponential/i);
+  });
+  it("fails when facilitator returned 429", () => {
+    const r = runRule(facilitatorThrottlingRule, {
+      facilitator: facilitator({ statusCode: 429 }),
+    });
+    expect(r.status).toBe("fail");
+  });
+});
+
+describe("extensionResponsesMissingRule", () => {
+  const bazaarSettle = (headers: Record<string, string> = {}): FacilitatorInteraction =>
+    facilitator({
+      stage: "settle",
+      statusCode: 200,
+      response: { success: true, isValid: true },
+      headers,
+    });
+
+  it("skips when caller did not signal expectsBazaarExtensions", () => {
+    const r = runRule(extensionResponsesMissingRule, { facilitator: bazaarSettle() });
+    expect(r.status).toBe("skip");
+  });
+  it("skips when there's no facilitator interaction", () => {
+    const r = runRule(extensionResponsesMissingRule, { expectsBazaarExtensions: true });
+    expect(r.status).toBe("skip");
+  });
+  it("skips when the facilitator stage is verify, not settle", () => {
+    const r = runRule(extensionResponsesMissingRule, {
+      expectsBazaarExtensions: true,
+      facilitator: facilitator({ stage: "verify", statusCode: 200 }),
+    });
+    expect(r.status).toBe("skip");
+  });
+  it("skips when settle did not return 200", () => {
+    const r = runRule(extensionResponsesMissingRule, {
+      expectsBazaarExtensions: true,
+      facilitator: facilitator({ stage: "settle", statusCode: 500 }),
+    });
+    expect(r.status).toBe("skip");
+  });
+  it("skips when response.success !== true (settle reported failure)", () => {
+    const r = runRule(extensionResponsesMissingRule, {
+      expectsBazaarExtensions: true,
+      facilitator: facilitator({ stage: "settle", statusCode: 200, response: { success: false } }),
+    });
+    expect(r.status).toBe("skip");
+  });
+  it("passes when EXTENSION-RESPONSES header is present on a successful settle", () => {
+    const r = runRule(extensionResponsesMissingRule, {
+      expectsBazaarExtensions: true,
+      facilitator: bazaarSettle({ "extension-responses": "bazaar=ok" }),
+    });
+    expect(r.status).toBe("pass");
+  });
+  it("is case-insensitive about the EXTENSION-RESPONSES header name", () => {
+    const r = runRule(extensionResponsesMissingRule, {
+      expectsBazaarExtensions: true,
+      facilitator: bazaarSettle({ "EXTENSION-Responses": "anything" }),
+    });
+    expect(r.status).toBe("pass");
+  });
+  it("fails (canonical #2207) when settle succeeded but EXTENSION-RESPONSES header is absent", () => {
+    const r = runRule(extensionResponsesMissingRule, {
+      expectsBazaarExtensions: true,
+      facilitator: bazaarSettle(),
+    });
+    expect(r.status).toBe("fail");
+    expect(r.fix).toMatch(/#2207|upstream/i);
+  });
+});
+
+describe("gasEstimationFailureRule", () => {
+  it("skips when no facilitator interaction is in context", () => {
+    const r = runRule(gasEstimationFailureRule, {});
+    expect(r.status).toBe("skip");
+  });
+  it("passes when facilitator response has no gas-estimation phrase", () => {
+    const r = runRule(gasEstimationFailureRule, {
+      facilitator: facilitator({ response: { success: true } }),
+    });
+    expect(r.status).toBe("pass");
+  });
+  it("fails when errorMessage contains 'unable to estimate gas'", () => {
+    const r = runRule(gasEstimationFailureRule, {
+      facilitator: facilitator({
+        statusCode: 400,
+        errorMessage: "failed to send transaction: unable to estimate gas",
+      }),
+    });
+    expect(r.status).toBe("fail");
+    expect(r.fix).toMatch(/retry|backoff|upstream/i);
+  });
+  it("fails when the phrase appears in invalidReason (different facilitator wrap)", () => {
+    const r = runRule(gasEstimationFailureRule, {
+      facilitator: facilitator({
+        statusCode: 400,
+        response: { isValid: false, invalidReason: "unable to estimate gas — node returned 0x" },
+      }),
+    });
+    expect(r.status).toBe("fail");
+  });
+  it("is case-insensitive about the error phrase", () => {
+    const r = runRule(gasEstimationFailureRule, {
+      facilitator: facilitator({
+        statusCode: 400,
+        errorMessage: "RPC: Unable To Estimate GAS",
+      }),
+    });
+    expect(r.status).toBe("fail");
+  });
+});
+
 describe("diagnose() orchestration — overall status", () => {
   function fullyPopulatedCtx(): DiagnosticContext {
     return ctx({
       payment: payment(),
       walletState: { usdcBalance: 5_000_000n, nonceConsumed: false, walletKind: "eoa" },
+      // X402-33: facilitator interaction populated so the facilitator-aware
+      // rules all pass instead of skipping. CDP URL + amount=1000 satisfies
+      // cdp-min-amount; status 200 with success:true + EXTENSION-RESPONSES
+      // header satisfies the bazaar-aware rules; no gas error → that passes.
+      facilitator: {
+        stage: "settle",
+        statusCode: 200,
+        url: "https://api.cdp.coinbase.com/v2/x402",
+        response: { success: true, isValid: true },
+        headers: { "extension-responses": "bazaar=ok" },
+      },
+      expectsBazaarExtensions: true,
     });
   }
 

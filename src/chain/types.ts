@@ -14,6 +14,16 @@ import type { Hex } from "viem";
 
 export type Address = `0x${string}`;
 
+/**
+ * Supported chains. ADR-001 locked v0.1 to Base Sepolia; ADR-003 (v0.3)
+ * extends to Base mainnet. No other chains in scope.
+ *
+ * Default in callers is `"base-sepolia"` — switching to mainnet is an
+ * explicit, opt-in decision (CLI flag `--chain base` or env
+ * `BASE_CHAIN_ID=8453`).
+ */
+export type ChainKey = "base-sepolia" | "base";
+
 export interface ChainTransfer {
   readonly txHash: Hex;
   readonly blockNumber: bigint;
@@ -62,7 +72,19 @@ export interface VerifyTransferOptions {
 }
 
 export interface ChainClientOptions {
-  /** RPC URL. Default: `https://sepolia.base.org`. */
+  /**
+   * Which chain to read from. Default: `"base-sepolia"`.
+   *
+   * When `"base"`, an `rpcUrl` MUST be supplied — there is intentionally
+   * no default mainnet RPC URL per CLAUDE.md hard rule #2 (no committed
+   * mainnet URLs). The client throws on construction if `chain === "base"`
+   * and no `rpcUrl` (or `transport` test escape) is provided.
+   */
+  readonly chain?: ChainKey;
+  /**
+   * RPC URL. Default for `chain: "base-sepolia"` is `https://sepolia.base.org`.
+   * No default for `chain: "base"` — caller must supply.
+   */
   readonly rpcUrl?: string;
   /** Per-RPC-call timeout in ms. Default 30_000 (matches the X402-12 ticket). */
   readonly rpcTimeoutMs?: number;
@@ -70,7 +92,8 @@ export interface ChainClientOptions {
   readonly retries?: number;
   /**
    * Test escape hatch: inject a custom viem `Transport`. When set, `rpcUrl`
-   * is ignored. Used by unit tests to mock RPC responses.
+   * is ignored AND the no-default-mainnet-RPC guard is bypassed. Used by
+   * unit tests to mock RPC responses on either chain.
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   readonly transport?: any;

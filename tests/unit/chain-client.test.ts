@@ -327,3 +327,55 @@ describe("createChainClient — getTransferByTxHash", () => {
     expect(typeof keccak256).toBe("function");
   });
 });
+
+// ─── X402-34: chain selection (Base mainnet support) ──────────────
+
+describe("createChainClient — chain selection", () => {
+  it("defaults to base-sepolia and uses the sepolia USDC contract in receipt fetches", async () => {
+    const rpc: MockRpc = {
+      receipt: successReceipt([transferLog(PAYER, PAYEE, 1_000n)]),
+      block: block(),
+      calls: [],
+    };
+    const client = createChainClient({ retries: 0, transport: mockTransport(rpc) });
+    const transfer = await client.getTransferByTxHash(TX_HASH);
+    expect(transfer?.tokenAddress.toLowerCase()).toBe(BASE_SEPOLIA_USDC.toLowerCase());
+  });
+
+  it("uses the mainnet USDC contract when chain=base (test transport provided)", async () => {
+    const { BASE_USDC } = await import("../../src/chain/index.js");
+    const rpc: MockRpc = {
+      receipt: successReceipt([transferLog(PAYER, PAYEE, 1_000n, BASE_USDC)]),
+      block: block(),
+      calls: [],
+    };
+    const client = createChainClient({
+      chain: "base",
+      retries: 0,
+      transport: mockTransport(rpc),
+    });
+    const transfer = await client.getTransferByTxHash(TX_HASH);
+    expect(transfer?.tokenAddress.toLowerCase()).toBe(BASE_USDC.toLowerCase());
+  });
+
+  it("throws on construction when chain=base AND no rpcUrl AND no transport", () => {
+    expect(() => createChainClient({ chain: "base" })).toThrow(/mainnet|RPC|hard rule/i);
+  });
+
+  it("does NOT throw when chain=base and rpcUrl is supplied (construction is lazy on RPC)", () => {
+    expect(() =>
+      createChainClient({ chain: "base", rpcUrl: "https://example-rpc.invalid" }),
+    ).not.toThrow();
+  });
+
+  it("does NOT throw when chain=base and transport (test escape) is supplied", () => {
+    const rpc: MockRpc = { receipt: null, calls: [] };
+    expect(() => createChainClient({ chain: "base", transport: mockTransport(rpc) })).not.toThrow();
+  });
+
+  it("exposes usdcAddressFor() that routes to the canonical address per chain", async () => {
+    const { usdcAddressFor, BASE_USDC } = await import("../../src/chain/index.js");
+    expect(usdcAddressFor("base-sepolia")).toBe(BASE_SEPOLIA_USDC);
+    expect(usdcAddressFor("base")).toBe(BASE_USDC);
+  });
+});
