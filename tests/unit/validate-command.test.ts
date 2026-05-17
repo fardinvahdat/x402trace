@@ -342,10 +342,7 @@ describe("runValidateCommand — --diff cross-facilitator", () => {
         xpay: { status: 200, body: { isValid: false, invalidReason: "signature_mismatch" } },
       }),
     });
-    const code = await runValidateCommand(
-      { ...baseDiffOpts, log: "human" },
-      ctx,
-    );
+    const code = await runValidateCommand({ ...baseDiffOpts, log: "human" }, ctx);
     expect(code).toBe(2);
     const out = ctx._out.output;
     expect(out).toMatch(/cdp/i);
