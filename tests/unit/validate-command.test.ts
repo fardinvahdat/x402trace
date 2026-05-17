@@ -264,3 +264,90 @@ describe("runValidateCommand — runtime", () => {
     expect(ctx._out.output).toMatch(/asset-address/);
   });
 });
+
+// ─── X402-35: validate --diff cross-facilitator (CLI-level integration) ────
+
+describe("runValidateCommand — --diff cross-facilitator", () => {
+  const baseDiffOpts = {
+    wallet: WALLET,
+    service: SERVICE_URL,
+    log: "json" as const,
+    diff: "cdp,xpay",
+  };
+
+  function diffFetcher(
+    perFacilitator: Record<
+      string,
+      { status: number; body: unknown; headers?: Record<string, string> }
+    >,
+  ): import("../../src/cli/validate-facilitator-diff.js").DiffFetcher {
+    return async (url: string) => {
+      for (const [name, response] of Object.entries(perFacilitator)) {
+        if (url.includes(name)) {
+          return new Response(JSON.stringify(response.body), {
+            status: response.status,
+            headers: { "content-type": "application/json", ...(response.headers ?? {}) },
+          });
+        }
+      }
+      throw new Error(`unexpected diff URL: ${url}`);
+    };
+  }
+
+  it("exits 0 when at least one facilitator accepts (isValid:true)", async () => {
+    const ctx = makeCtx({
+      diffFetcher: diffFetcher({
+        cdp: { status: 200, body: { isValid: false, invalidReason: "no_sig" } },
+        xpay: { status: 200, body: { isValid: true, payer: WALLET } },
+      }),
+    });
+    const code = await runValidateCommand(baseDiffOpts, ctx);
+    expect(code).toBe(0);
+    const out = JSON.parse(ctx._out.output);
+    expect(out.verdict.kind).toBe("any_accepts");
+    expect(out.verdict.accepted).toEqual(["xpay"]);
+  });
+
+  it("exits 2 when all facilitators reject", async () => {
+    const ctx = makeCtx({
+      diffFetcher: diffFetcher({
+        cdp: { status: 400, body: { errorReason: "invalid_payload" } },
+        xpay: { status: 200, body: { isValid: false, invalidReason: "signature_mismatch" } },
+      }),
+    });
+    const code = await runValidateCommand(baseDiffOpts, ctx);
+    expect(code).toBe(2);
+    const out = JSON.parse(ctx._out.output);
+    expect(out.verdict.kind).toBe("all_reject");
+  });
+
+  it("rejects with EXIT_USAGE on invalid --diff (single entry)", async () => {
+    const ctx = makeCtx();
+    const code = await runValidateCommand({ ...baseDiffOpts, diff: "cdp" }, ctx);
+    expect(code).toBe(1);
+    expect(ctx._err.output).toMatch(/two facilitators/);
+  });
+
+  it("rejects with EXIT_USAGE on unknown facilitator alias", async () => {
+    const ctx = makeCtx();
+    const code = await runValidateCommand({ ...baseDiffOpts, diff: "cdp,sketchy-fac" }, ctx);
+    expect(code).toBe(1);
+    expect(ctx._err.output).toMatch(/sketchy-fac/);
+  });
+
+  it("renders a human-format diff table with per-facilitator rejection reason", async () => {
+    const ctx = makeCtx({
+      diffFetcher: diffFetcher({
+        cdp: { status: 400, body: { errorReason: "invalid_payload" } },
+        xpay: { status: 200, body: { isValid: false, invalidReason: "signature_mismatch" } },
+      }),
+    });
+    const code = await runValidateCommand({ ...baseDiffOpts, log: "human" }, ctx);
+    expect(code).toBe(2);
+    const out = ctx._out.output;
+    expect(out).toMatch(/cdp/i);
+    expect(out).toMatch(/xpay/i);
+    expect(out).toMatch(/invalid_payload|signature_mismatch/);
+    expect(out).toMatch(/VERDICT/);
+  });
+});

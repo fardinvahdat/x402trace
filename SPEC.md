@@ -66,16 +66,32 @@ $ x402trace proxy --upstream https://api.example.com --port 8402 --reconcile
 
 New module `src/diagnose/` holds the rule engine; both subcommands are thin wrappers.
 
-### v0.3 stretch (kept, not killed)
+## 5b. v0.3 scope (picked in [ADR-003](./DECISIONS.md#adr-003-v03-feature-pick--bazaar-check-headline--5-facilitator-aware-diagnose-rules--validate---diff--base-mainnet-autonomous-execution-under-strict-6-stage-audit-gate))
 
-- Mainnet (gated on ≥1 week of clean testnet traffic per [§ 6](#6-success-criteria))
-- ERC-6492 wallet-kind support in `validate`
-- `x402trace diff cdp,payai,x402-rs <payload>` — cross-facilitator behavior diff ([dogfood-notes Candidate D](./dogfood-notes.md#candidate-d-cross-facilitator-drift-dashboard-rank-5))
-- `x402trace bazaar-check` — Bazaar indexing diagnostics (pain rank #2)
-- `x402trace versions` — SDK-skew audit (pain rank #7)
-- `--watch` daemon mode with alerting integrations (PagerDuty / webhook / Slack)
-- `--replay` re-fire-with-modification — only worth shipping with multi-signer support
-- Reconciliation actions beyond JSONL log (webhook, structured remediation, optional auto-retry)
+**The "did I implement x402 right?" release.** v0.2 closed pre/post-payment debugging from the buyer side; v0.3 turns the lens on the operator's question — _did I implement this correctly, and is the bug upstream of me?_ Evidence base: Coinbase Developer Discord #x402 transcript + GitHub Issues + Dev.to (see [Notion v0.3 plan](https://www.notion.so/36003c62b26381fd9ae5c48758d53ccd)).
+
+- **`x402trace bazaar-check <service-url>`** (headline) — pre-ship validator for Bazaar / agentic.market implementations. Composes `/.well-known/x402` manifest validation, 402 structure check, optional paid pass (EXTENSION-RESPONSES header presence), indexing query, self-payment guard, and a single bottom-line verdict. Addresses the Bazaar-indexing pain cluster (≥10 named Discord voices + [#2207](https://github.com/x402-foundation/x402/issues/2207) with 94 comments). Read-only by default; opt-in paid-pass mode is testnet-wallet only.
+- **Five new facilitator-aware diagnose rules** in `src/diagnose/`: `cdpMinAmountRule` (akiyama's multi-day chase + Coinbase team confirmation), `selfPaymentRule` (TerraDeed CDP→xpay switch), `facilitatorThrottlingRule` (tanissian's 403), `extensionResponsesMissingRule` ([#2207](https://github.com/x402-foundation/x402/issues/2207) cluster), `gasEstimationFailureRule` ([#1065](https://github.com/x402-foundation/x402/issues/1065) 40% failure rate + Dev.to confirmation).
+- **`x402trace validate --diff <facilitator-1>,<facilitator-2>`** — cross-facilitator drift on `/verify`, parallel calls, surface drift, recommend which facilitator accepts the payload. Reuses the new rule set per-facilitator.
+- **Base mainnet** — new `--chain <base-sepolia|base>` flag, mainnet USDC address (`0x833589fCD…`) in the chain client's asset map, testnet-only guard becomes opt-in. Mainnet startup banner. The CLAUDE.md hard rule "testnet only" is now "no committed mainnet RPC URLs" — user supplies their own at runtime.
+
+### v0.3 stretch (only if scope budget allows)
+
+- **`x402trace versions <service-url>`** — SDK-skew audit. Reads local `package.json`, queries service 402 for version hints, prints a compatibility matrix against a known-skew table.
+- **SLA-breach observation event** in proxy JSONL — new `service.sla_breach` discriminant when upstream response time > threshold or non-2xx after `/settle`. Requires ADR-004 for the event-shape change. No enforcement, no bonds (that's [Recourse's](https://recourse-three.vercel.app/) domain).
+
+### v0.3.1+ deferred (kept, not killed)
+
+- ERC-6492 Smart Wallet support in `validate` — zero Discord voices today; build when the first user reports a wrong-answer bug.
+- `extensions.diagnostic` decoder ([#1875](https://github.com/x402-foundation/x402/pull/1875)) — gated on upstream merge.
+- `tokenNameMismatchRule` ("USD Coin" vs "USDC" rejection) — single voice on a single platform (Dev.to). Promote when a second voice surfaces.
+- `repeatedNonceRule` (replay / settlement-proof reuse) — single GitHub voice ([#1805](https://github.com/x402-foundation/x402/issues/1805)). Promote when a second voice surfaces.
+- `--watch` daemon mode with alerting — zero Discord voices.
+- `--replay` re-fire-with-modification — only worth shipping with multi-signer support.
+- Reconciliation actions beyond JSONL log (webhook, structured remediation, optional auto-retry) — auto-retry breaks the read-only security promise.
+- Multi-chain (Polygon, Arbitrum, Optimism, Solana) — Base mainnet first; non-Base needs separate ADR.
+- Audit / compliance export (CSV / PDF) — no concrete user asking.
+- Hosted SaaS surface — local CLI commitment from v0.1 persists.
 
 ## 6. Success criteria
 

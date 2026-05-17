@@ -16,10 +16,12 @@
 import "dotenv/config";
 import { Command } from "commander";
 import type { LogFormat } from "../decoder/types.js";
+import { runBazaarCheckCommand } from "./bazaar-check-command.js";
 import { runExplainCommand } from "./explain-command.js";
 import { runInspectCommand } from "./inspect-command.js";
 import { runProxyCommand } from "./proxy-command.js";
 import { runValidateCommand } from "./validate-command.js";
+import { runVersionsCommand } from "./versions-command.js";
 import { EXIT_SUCCESS, EXIT_USAGE, type ExitCode } from "./exit-codes.js";
 
 // Keep in sync with package.json `version`. A runtime read from
@@ -28,7 +30,7 @@ import { EXIT_SUCCESS, EXIT_USAGE, type ExitCode } from "./exit-codes.js";
 // both `tsx src/cli.ts` (dev) and `dist/cli.js` (published) — folding
 // that into a follow-up cleanup. Until then, the X402-19 release
 // checklist + the changelog-cut step are the guards against drift.
-const VERSION = "0.2.3";
+const VERSION = "0.3.0";
 
 export interface CliContext {
   readonly stdout: NodeJS.WritableStream;
@@ -50,6 +52,7 @@ interface ProxyFlags {
   logSecrets?: boolean;
   reconcile?: boolean;
   rpcUrl?: string;
+  chain?: string;
   watchTimeoutMs?: string;
   upstreamTimeoutMs?: string;
 }
@@ -57,16 +60,38 @@ interface ProxyFlags {
 interface InspectFlags {
   log?: string;
   watchTimeoutMs?: string;
+  chain?: string;
 }
 
 interface ValidateFlags {
   log?: string;
   rpcUrl?: string;
+  chain?: string;
   strict?: boolean;
+  diff?: string;
+  diffTimeoutMs?: string;
 }
 
 interface ExplainFlags {
   log?: string;
+}
+
+interface BazaarCheckFlags {
+  log?: string;
+  chain?: string;
+  payerHint?: string;
+  discoveryBaseUrl?: string;
+}
+
+interface VersionsFlags {
+  log?: string;
+}
+
+function validateChain(value: string): "base-sepolia" | "base" {
+  if (value !== "base-sepolia" && value !== "base") {
+    throw new Error(`--chain must be 'base-sepolia' or 'base' (got '${value}')`);
+  }
+  return value;
 }
 
 export async function runCli(argv: readonly string[], ctx: CliContext): Promise<ExitCode> {
@@ -104,9 +129,14 @@ export async function runCli(argv: readonly string[], ctx: CliContext): Promise<
     )
     .option(
       "--reconcile",
-      "Subscribe to Base Sepolia and reconcile facilitator rejections against on-chain settlements",
+      "Subscribe to the chain and reconcile facilitator rejections against on-chain settlements",
     )
-    .option("--rpc-url <url>", "Base Sepolia RPC URL (env BASE_RPC_URL)")
+    .option("--rpc-url <url>", "RPC URL for the chosen chain (env BASE_RPC_URL)")
+    .option(
+      "--chain <base-sepolia|base>",
+      "Chain to watch for reconciliation (default 'base-sepolia'; 'base' requires --rpc-url, no default mainnet URL)",
+      validateChain,
+    )
     .option(
       "--watch-timeout-ms <n>",
       "How long to watch the chain for a rejected exchange before giving up (default 60000)",
@@ -117,6 +147,7 @@ export async function runCli(argv: readonly string[], ctx: CliContext): Promise<
     )
     .action(async (flags: ProxyFlags) => {
       const log = flags.log as LogFormat | undefined;
+      const chain = flags.chain as "base-sepolia" | "base" | undefined;
       exit = await runProxyCommand(
         {
           ...(flags.upstream !== undefined ? { upstream: flags.upstream } : {}),
@@ -126,6 +157,7 @@ export async function runCli(argv: readonly string[], ctx: CliContext): Promise<
           ...(flags.logSecrets !== undefined ? { logSecrets: flags.logSecrets } : {}),
           ...(flags.reconcile !== undefined ? { reconcile: flags.reconcile } : {}),
           ...(flags.rpcUrl !== undefined ? { rpcUrl: flags.rpcUrl } : {}),
+          ...(chain !== undefined ? { chain } : {}),
           ...(flags.watchTimeoutMs !== undefined
             ? { watchTimeoutMs: Number(flags.watchTimeoutMs) }
             : {}),
@@ -148,8 +180,14 @@ export async function runCli(argv: readonly string[], ctx: CliContext): Promise<
     .argument("<jsonl-log-file>", "Path to a JSONL log written by `x402trace proxy --reconcile`")
     .option("--log <human|json>", "Stdout format (default 'human')", validateLogFormat)
     .option("--watch-timeout-ms <n>", "Watch window applied during replay (default 60000)")
+    .option(
+      "--chain <base-sepolia|base>",
+      "Chain context for the replay (default 'base-sepolia'; should match the capture)",
+      validateChain,
+    )
     .action(async (logFile: string, flags: InspectFlags) => {
       const log = flags.log as LogFormat | undefined;
+      const chain = flags.chain as "base-sepolia" | "base" | undefined;
       exit = await runInspectCommand(
         {
           logFile,
@@ -157,6 +195,7 @@ export async function runCli(argv: readonly string[], ctx: CliContext): Promise<
           ...(flags.watchTimeoutMs !== undefined
             ? { watchTimeoutMs: Number(flags.watchTimeoutMs) }
             : {}),
+          ...(chain !== undefined ? { chain } : {}),
         },
         { stdout: ctx.stdout, stderr: ctx.stderr },
       );
@@ -170,20 +209,39 @@ export async function runCli(argv: readonly string[], ctx: CliContext): Promise<
     .argument("<wallet>", "Payer wallet address (0x-prefixed, 20 bytes)")
     .argument("<service-url>", "Service URL that responds 402 with an x402 challenge")
     .option("--log <human|json>", "Stdout format (default 'human')", validateLogFormat)
-    .option("--rpc-url <url>", "Base Sepolia RPC URL (env BASE_RPC_URL)")
+    .option("--rpc-url <url>", "RPC URL for the chosen chain (env BASE_RPC_URL)")
+    .option(
+      "--chain <base-sepolia|base>",
+      "Chain to query for wallet state (default 'base-sepolia'; 'base' requires --rpc-url)",
+      validateChain,
+    )
     .option(
       "--strict",
       "Treat `uncertain` (key chain checks skipped) as a failure — exit 2 instead of 0",
     )
+    .option(
+      "--diff <facilitators>",
+      "Cross-facilitator drift: comma-separated list of aliases (cdp, xpay, payai, x402.org) OR full URLs. Runs /verify against each in parallel and reports drift.",
+    )
+    .option(
+      "--diff-timeout-ms <n>",
+      "Per-facilitator /verify timeout in --diff mode (default 10000)",
+    )
     .action(async (wallet: string, service: string, flags: ValidateFlags) => {
       const log = flags.log as LogFormat | undefined;
+      const chain = flags.chain as "base-sepolia" | "base" | undefined;
       exit = await runValidateCommand(
         {
           wallet,
           service,
           ...(log !== undefined ? { log } : {}),
           ...(flags.rpcUrl !== undefined ? { rpcUrl: flags.rpcUrl } : {}),
+          ...(chain !== undefined ? { chain } : {}),
           ...(flags.strict !== undefined ? { strict: flags.strict } : {}),
+          ...(flags.diff !== undefined ? { diff: flags.diff } : {}),
+          ...(flags.diffTimeoutMs !== undefined
+            ? { diffTimeoutMs: Number(flags.diffTimeoutMs) }
+            : {}),
         },
         { stdout: ctx.stdout, stderr: ctx.stderr, env: ctx.env },
       );
@@ -204,6 +262,61 @@ export async function runCli(argv: readonly string[], ctx: CliContext): Promise<
           ...(log !== undefined ? { log } : {}),
         },
         { stdout: ctx.stdout, stderr: ctx.stderr },
+      );
+    });
+
+  program
+    .command("versions")
+    .description(
+      "SDK skew audit: compares local package.json @x402/* versions + service 402 version hints against a bundled known-skew table.",
+    )
+    .argument("<service-url>", "Service URL that responds 402 with an x402 challenge")
+    .option("--log <human|json>", "Stdout format (default 'human')", validateLogFormat)
+    .action(async (service: string, flags: VersionsFlags) => {
+      const log = flags.log as LogFormat | undefined;
+      exit = await runVersionsCommand(
+        {
+          service,
+          ...(log !== undefined ? { log } : {}),
+        },
+        { stdout: ctx.stdout, stderr: ctx.stderr },
+      );
+    });
+
+  program
+    .command("bazaar-check")
+    .description(
+      "Pre-ship Bazaar / agentic.market validator: well-known manifest, 402 challenge, indexing status. Read-only.",
+    )
+    .argument("<service-url>", "Service URL that responds 402 with an x402 challenge")
+    .option("--log <human|json>", "Stdout format (default 'human')", validateLogFormat)
+    .option(
+      "--chain <base-sepolia|base>",
+      "Chain for the Bazaar indexing query (default 'base-sepolia')",
+      validateChain,
+    )
+    .option(
+      "--payer-hint <address>",
+      "Optional payer address; enables the self-payment guard (flags payer == payTo)",
+    )
+    .option(
+      "--discovery-base-url <url>",
+      "Override the CDP discovery base URL (default https://api.cdp.coinbase.com)",
+    )
+    .action(async (service: string, flags: BazaarCheckFlags) => {
+      const log = flags.log as LogFormat | undefined;
+      const chain = flags.chain as "base-sepolia" | "base" | undefined;
+      exit = await runBazaarCheckCommand(
+        {
+          service,
+          ...(log !== undefined ? { log } : {}),
+          ...(chain !== undefined ? { chain } : {}),
+          ...(flags.payerHint !== undefined ? { payerHint: flags.payerHint } : {}),
+          ...(flags.discoveryBaseUrl !== undefined
+            ? { discoveryBaseUrl: flags.discoveryBaseUrl }
+            : {}),
+        },
+        { stdout: ctx.stdout, stderr: ctx.stderr, env: ctx.env },
       );
     });
 

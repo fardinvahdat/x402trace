@@ -1,9 +1,12 @@
 /**
- * USDC + EIP-3009 event ABIs and well-known addresses for v0.1 (Base Sepolia only).
+ * USDC + EIP-3009 event ABIs and well-known addresses.
  *
- * Per ADR-001 the v0.1 wedge is Base-Sepolia-only with `exact` EVM scheme.
- * The USDC contract there (Circle's testnet FiatTokenV2) emits two events
- * we care about on a `transferWithAuthorization`:
+ * Per ADR-001 the v0.1 wedge was Base-Sepolia-only with `exact` EVM
+ * scheme. ADR-003 (v0.3) extends to Base mainnet via the `chain` option
+ * on `createChainClient`; the scheme constraint (exact EVM) stays.
+ *
+ * The USDC contracts on both chains emit two events we care about on a
+ * `transferWithAuthorization`:
  *
  *  1. `Transfer(from, to, value)` — ERC-20 standard event
  *  2. `AuthorizationUsed(authorizer, nonce)` — EIP-3009 settlement marker
@@ -14,10 +17,22 @@
  * (payer, contract).
  */
 
-import type { Address } from "./types.js";
+import type { Address, ChainKey } from "./types.js";
 
-/** Base Sepolia USDC (Circle testnet FiatTokenV2). */
+/** Base Sepolia USDC (Circle testnet FiatTokenV2). Chain ID 84532. */
 export const BASE_SEPOLIA_USDC: Address = "0x036CbD53842c5426634e7929541eC2318f3dCF7e";
+
+/** Base mainnet USDC (Circle FiatTokenV2). Chain ID 8453. */
+export const BASE_USDC: Address = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+
+/**
+ * Resolve the canonical USDC contract for a given chain key. The
+ * reconciliation engine and `validate` / `bazaar-check` callers go
+ * through this so chain ↔ asset mapping is single-source.
+ */
+export function usdcAddressFor(chain: ChainKey): Address {
+  return chain === "base" ? BASE_USDC : BASE_SEPOLIA_USDC;
+}
 
 export const USDC_TRANSFER_EVENT = {
   type: "event",

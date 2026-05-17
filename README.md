@@ -8,7 +8,7 @@
 
 ![x402trace catching a real Base Sepolia timeout-reconciliation failure end-to-end](./examples/cast/e2e-timeout-reconciliation.gif)
 
-*Real-time capture of the `RECONCILED ⚠ settled-but-server-thinks-not` detection against live Base Sepolia + `x402.org/facilitator`. ~17 seconds, real on-chain tx. Cast file replayable with `asciinema play examples/cast/e2e-timeout-reconciliation.cast`.*
+_Real-time capture of the `RECONCILED ⚠ settled-but-server-thinks-not` detection against live Base Sepolia + `x402.org/facilitator`. ~17 seconds, real on-chain tx. Cast file replayable with `asciinema play examples/cast/e2e-timeout-reconciliation.cast`._
 
 ## When to use x402trace
 
@@ -130,6 +130,88 @@ The full pre/during/post-payment debugger:
 
 The authoritative flag list is `x402trace --help` (or per-subcommand `--help`) — wired into the unit tests so it can't drift.
 
+### `versions` (v0.3+) — SDK skew audit
+
+Compares your local `package.json` `@x402/*` versions and the service's 402 version hints against a bundled known-skew table. Catches the kind of multi-day debugging chase Myceliaman14 (Python SDK pre-v2 → TS V2 refactor) and Poteshniy (`@x402/fetch 2.10.0` extension-echo bug) hit on Discord.
+
+```bash
+x402trace versions https://your-service.example/api/route
+x402trace versions https://… --log json
+```
+
+Output names each match with severity (`warning` / `blocking`), the upstream evidence link (#2157, #2207), and a concrete fix. Exit `0` = no skew, `2` = at least one match.
+
+### `validate --diff` (v0.3+) — cross-facilitator drift detection
+
+When a payment works on one facilitator but fails on another (TerraDeed's CDP → xpay switch in the Discord transcript), `--diff` runs the same synthesised payload through both `/verify` endpoints in parallel and shows you exactly where they disagree.
+
+```bash
+# Built-in aliases: cdp, xpay, payai, x402.org. Full URLs also accepted.
+x402trace validate 0xYourWallet https://your-service.example/api/route --diff cdp,xpay
+
+# JSON output for CI; per-facilitator timeout knob
+x402trace validate 0xYourWallet https://… --diff cdp,xpay --log json --diff-timeout-ms 5000
+```
+
+Each row reports the per-facilitator HTTP status + body, captured rejection reason, and any X402-33 facilitator-aware rules firing (e.g. CDP minimum amount, throttling 403/429). Exit codes: `0` = at least one accepts, `2` = all reject, `3` = all timeout.
+
+### `bazaar-check` (v0.3+) — pre-ship Bazaar / agentic.market validator
+
+The headline of v0.3. Answers the question Discord operators are asking each other in real-time: **"is my Bazaar / agentic.market integration implemented correctly, or is the bug upstream of me?"**
+
+```bash
+# Default — Base Sepolia
+x402trace bazaar-check https://your-service.example/api/route
+
+# Mainnet (real funds in scope; banner printed)
+x402trace bazaar-check https://your-service.example/api/route --chain base --rpc-url https://your-mainnet-rpc
+
+# With a payer-hint (enables the self-payment guard)
+x402trace bazaar-check https://your-service.example/api/route --payer-hint 0xYourPayer
+```
+
+Four read-only checks compose into a single bottom-line verdict:
+
+| Check          | What it validates                                                                                                                                                                    |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `well-known`   | `/.well-known/x402` manifest exists with `name` + `description` + `accepts[]`                                                                                                        |
+| `challenge`    | The protected endpoint returns 402 with a valid x402 v1/v2 body AND `extensions.bazaar.{name, description}`                                                                          |
+| `self-payment` | When `--payer-hint` is supplied, flags `payer == payTo` (CDP rejects this with a generic `invalid_payload`)                                                                          |
+| `indexing`     | CDP discovery (`/v2/x402/discovery/resources?payTo=…`) returns non-empty resources (else: matches the [#2207](https://github.com/x402-foundation/x402/issues/2207) upstream pattern) |
+
+**Exit codes:**
+
+- `0` — looks correct
+- `2` — found issues in your implementation (fix the failed check)
+- `3` — your code looks correct; the bug is upstream (e.g. the canonical [#2207](https://github.com/x402-foundation/x402/issues/2207) Bazaar indexing failure — 94 reports). The verdict prose names the GitHub issue so you don't have to map the symptom.
+
+**Scope notes:**
+
+- Read-only. Never signs, never broadcasts.
+- The opt-in paid-pass mode (`--with-wallet`) is **deferred to v0.3.1** — see [ADR-003](./DECISIONS.md). The static-analysis-only checks shipped here cover the dominant Discord pain (Bazaar indexing failure) without needing signing infrastructure.
+
+### Chain selection (Base mainnet, v0.3+)
+
+x402trace v0.3 enables Base mainnet alongside the default Base Sepolia. The `--chain` flag (or `BASE_CHAIN_ID` env) selects the chain; default stays `base-sepolia` for backward compatibility.
+
+```bash
+# Default — Base Sepolia (unchanged)
+x402trace proxy --upstream <url> --reconcile
+
+# Base mainnet — RPC URL must be supplied; there is no built-in mainnet endpoint
+x402trace proxy --upstream <url> --reconcile --chain base --rpc-url https://your-mainnet-rpc
+
+# Validate a mainnet wallet (read-only)
+x402trace validate 0xYourWallet https://your-service --chain base --rpc-url https://your-mainnet-rpc
+```
+
+**Mainnet safety notes:**
+
+- x402trace never signs transactions and never broadcasts. The worst case from a misconfigured mainnet run is a failed read or a misleading reconciliation verdict.
+- The buyer's wallet (which signs the EIP-3009 authorization) is upstream of x402trace. The buyer's risk model is unchanged.
+- No mainnet RPC URL is shipped — supply your own via `--rpc-url` or `BASE_RPC_URL` env. Mainnet startup prints a `⚠ MAINNET` banner so accidental mainnet runs are visible at a glance.
+- CI never uses mainnet (CLAUDE.md hard rule #2). Don't commit a populated mainnet URL.
+
 ### `validate` — example output
 
 ![x402trace validate against a live Base Sepolia wallet — all 10 rules pass](./examples/cast/validate-demo.gif)
@@ -175,7 +257,7 @@ That's the canonical [coinbase/x402#1062](https://github.com/coinbase/x402/issue
 **Q: The facilitator returned `invalid_payload` with no explanation. How do I figure out why?**
 Save the captured 402 (proxy does this automatically) and run `x402trace explain <log>`. It runs 10 rules against the captured state — most `invalid_payload` cases turn out to be a `validBefore` expiry, value mismatch, or recipient mismatch, each rendered as a single failed rule with an actionable fix.
 
-**Q: Can I check whether a wallet *can* pay a service without actually signing?**
+**Q: Can I check whether a wallet _can_ pay a service without actually signing?**
 Yes — `x402trace validate <wallet> <service-url>` is read-only. It fetches the 402, queries chain state (USDC balance, EIP-3009 nonce, wallet kind), runs the same rules `explain` uses. Exits `0` if would-succeed, `2` if would-fail.
 
 **Q: Does this work on mainnet?**
@@ -192,15 +274,15 @@ No. As of v0.2.3 the runtime tree is `commander` + `dotenv` + `viem` + `x402` on
 
 ## How x402trace compares
 
-| Capability | x402trace | xpay | x402scan | x402lint |
-|---|:-:|:-:|:-:|:-:|
-| Local proxy + JSONL audit log | ✅ | — | — | — |
-| Timeout reconciliation (catches [#1062](https://github.com/coinbase/x402/issues/1062)) | ✅ | partial | — | — |
-| Pre-flight wallet check (no signing) | ✅ | — | — | — |
-| Plain-English 402 diagnosis | ✅ | — | — | partial |
-| Static config validation | partial | — | — | ✅ |
-| Network explorer / discovery | — | — | ✅ | — |
-| Spending controls | — | ✅ | — | — |
+| Capability                                                                             | x402trace |  xpay   | x402scan | x402lint |
+| -------------------------------------------------------------------------------------- | :-------: | :-----: | :------: | :------: |
+| Local proxy + JSONL audit log                                                          |    ✅     |    —    |    —     |    —     |
+| Timeout reconciliation (catches [#1062](https://github.com/coinbase/x402/issues/1062)) |    ✅     | partial |    —     |    —     |
+| Pre-flight wallet check (no signing)                                                   |    ✅     |    —    |    —     |    —     |
+| Plain-English 402 diagnosis                                                            |    ✅     |    —    |    —     | partial  |
+| Static config validation                                                               |  partial  |    —    |    —     |    ✅    |
+| Network explorer / discovery                                                           |     —     |    —    |    ✅    |    —     |
+| Spending controls                                                                      |     —     |   ✅    |    —     |    —     |
 
 x402trace is the **debugger** in the x402 toolbox — built for the narrow, expensive moment when a payment fell into the gap between facilitator and chain. The other tools target adjacent jobs (routing, explorer, lint, controls) and compose well. Full comparison in [SPEC.md § 8](./SPEC.md#8-differentiation).
 

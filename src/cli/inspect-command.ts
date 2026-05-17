@@ -24,6 +24,13 @@ export interface InspectCommandOptions {
   readonly logFile?: string;
   readonly log?: LogFormat;
   readonly watchTimeoutMs?: number;
+  /**
+   * Chain context for the replay. Informational only — `inspect` is
+   * pure offline and never makes RPC calls — but accepting the flag
+   * keeps the surface consistent across subcommands and lets the
+   * operator's intent be visible in the output banner.
+   */
+  readonly chain?: "base-sepolia" | "base";
 }
 
 export interface InspectRunContext {
@@ -57,6 +64,15 @@ export async function runInspectCommand(
 
   const format: LogFormat = opts.log ?? "human";
   const color = ctx.color ?? createColorizer({ stream: ctx.stdout as { isTTY?: boolean } });
+
+  if (opts.chain === "base") {
+    const banner = color.paint(
+      "yellow",
+      "⚠ MAINNET (chain=base) — replaying a mainnet capture; inspect itself is pure offline",
+    );
+    if (format === "human") ctx.stdout.write(`${banner}\n`);
+    else ctx.stderr.write(`${banner}\n`);
+  }
 
   try {
     const report = await replayLog({

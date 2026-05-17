@@ -164,4 +164,38 @@ describe("resolveProxyConfig — per-field precedence (flag > env > default)", (
   it("logSecrets honours the --log-secrets flag", () => {
     expect(resolve({ logSecrets: true }).logSecrets).toBe(true);
   });
+
+  // ─── X402-34: chain selection precedence ──────────────────────────
+
+  it("chain defaults to 'base-sepolia' when neither flag nor env is set", () => {
+    expect(resolve().chain).toBe("base-sepolia");
+  });
+
+  it("chain honours --chain flag", () => {
+    expect(resolve({ chain: "base" }).chain).toBe("base");
+  });
+
+  it("chain honours BASE_CHAIN_ID env (string form)", () => {
+    expect(resolve({}, { BASE_CHAIN_ID: "base" }).chain).toBe("base");
+  });
+
+  it("chain honours BASE_CHAIN_ID env (numeric form for both networks)", () => {
+    expect(resolve({}, { BASE_CHAIN_ID: "8453" }).chain).toBe("base");
+    expect(resolve({}, { BASE_CHAIN_ID: "84532" }).chain).toBe("base-sepolia");
+  });
+
+  it("--chain flag overrides BASE_CHAIN_ID env (flag-over-env precedence)", () => {
+    expect(resolve({ chain: "base-sepolia" }, { BASE_CHAIN_ID: "base" }).chain).toBe(
+      "base-sepolia",
+    );
+  });
+
+  it("unrecognized BASE_CHAIN_ID values fall back to default base-sepolia (no crash)", () => {
+    expect(resolve({}, { BASE_CHAIN_ID: "polygon" }).chain).toBe("base-sepolia");
+  });
+
+  it("BASE_CHAIN_ID parsing is case-insensitive", () => {
+    expect(resolve({}, { BASE_CHAIN_ID: "BASE" }).chain).toBe("base");
+    expect(resolve({}, { BASE_CHAIN_ID: "Base-Sepolia" }).chain).toBe("base-sepolia");
+  });
 });

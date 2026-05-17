@@ -10,19 +10,21 @@ Canonical reference: [coinbase/x402 Issue #1062](https://github.com/coinbase/x40
 
 ## Status
 
-- **Phase:** v0.1.0 shipped 2026-05-12 ([`x402trace@0.1.0`](https://www.npmjs.com/package/x402trace)). Now in v0.2 scope.
+- **Phase:** v0.2.3 shipped 2026-05-13 ([`x402trace@0.2.3`](https://www.npmjs.com/package/x402trace) — supply-chain hardening cut). Now in **v0.3.0 scope, autonomous-mode execution under strict audit gate** per [ADR-003](./DECISIONS.md#adr-003-v03-feature-pick--bazaar-check-headline--5-facilitator-aware-diagnose-rules--validate---diff--base-mainnet-autonomous-execution-under-strict-6-stage-audit-gate).
 - **v0.1 wedge:** Local HTTP proxy + timeout-reconciliation engine. Accepted 2026-05-12 in [ADR-001](./DECISIONS.md#adr-001-v01-wedge). Verified via three independent live Base Sepolia settlements ([tx `0x116ccf73…ba52`](https://sepolia.basescan.org/tx/0x116ccf73fa77eda19aea149606042f1e848e8afe2f719a0d2890dd2b2ff0ba52) is the X402-15 demo capture).
-- **v0.2 scope:** `x402trace validate` (pre-flight) + `x402trace explain` (offline plain-English 402 diagnosis), sharing a new `src/diagnose/` rule engine. Picked 2026-05-12 in [ADR-002](./DECISIONS.md#adr-002-v02-feature-pick--validate-primary--explain-paired). Same scope tightening as v0.1: Base Sepolia only, single facilitator, `exact` EVM, read-only.
-- **Timeline:** ~2 weeks to v0.2.0. Implementation in [X402-21](https://vahdatfardin.atlassian.net/browse/X402-21), release in [X402-22](https://vahdatfardin.atlassian.net/browse/X402-22).
+- **v0.2 scope:** `x402trace validate` (pre-flight) + `x402trace explain` (offline plain-English 402 diagnosis), sharing the `src/diagnose/` rule engine. Picked 2026-05-12 in [ADR-002](./DECISIONS.md#adr-002-v02-feature-pick--validate-primary--explain-paired). Shipped in v0.2.0..v0.2.3.
+- **v0.3 scope:** `x402trace bazaar-check` (headline) + 5 facilitator-aware diagnose rules + `validate --diff` cross-facilitator + Base mainnet support. Stretch: `versions` SDK skew, SLA-breach observation. Picked 2026-05-14 in [ADR-003](./DECISIONS.md#adr-003-v03-feature-pick--bazaar-check-headline--5-facilitator-aware-diagnose-rules--validate---diff--base-mainnet-autonomous-execution-under-strict-6-stage-audit-gate). Execution autonomous per user direction; every ticket runs through the [Strict audit gate](#strict-audit-gate-autonomous-mode).
+- **Timeline:** ~4 weeks to v0.3.0. Implementation in [X402-32](https://vahdatfardin.atlassian.net/browse/X402-32) / [X402-33](https://vahdatfardin.atlassian.net/browse/X402-33) / [X402-34](https://vahdatfardin.atlassian.net/browse/X402-34) / [X402-35](https://vahdatfardin.atlassian.net/browse/X402-35), stretch in [X402-36](https://vahdatfardin.atlassian.net/browse/X402-36) / [X402-37](https://vahdatfardin.atlassian.net/browse/X402-37), release in [X402-38](https://vahdatfardin.atlassian.net/browse/X402-38).
 - **Repo:** https://github.com/fardinvahdat/x402trace
 - **Jira:** https://vahdatfardin.atlassian.net/jira/software/projects/X402
-- **Notion plan:** https://www.notion.so/35c03c62b2638159a5e2d1ecaac5ff0b
+- **Notion v0.2 plan:** https://www.notion.so/35c03c62b2638159a5e2d1ecaac5ff0b
+- **Notion v0.3 plan:** https://www.notion.so/36003c62b26381fd9ae5c48758d53ccd
 
 ## Hard rules — non-negotiable
 
 1. **Test everything, in every way appropriate to the change.** See [TESTING.md](./TESTING.md). No PR without tests. No exceptions. Documentation changes need link/format checks; code changes need unit + integration + (when user-facing) end-to-end tests; release changes need smoke tests. The rule is not "write some tests"; it is "the change is not done until I have proven, with tests, that it works and that nothing else broke."
 
-2. **Testnet only until v0.1 ships.** All dev work runs on Base Sepolia. Mainnet RPC URLs are forbidden in any committed file (including `.env.example`).
+2. **No committed mainnet RPC URLs.** v0.3 enables Base mainnet support (per [ADR-003](./DECISIONS.md#adr-003-v03-feature-pick--bazaar-check-headline--5-facilitator-aware-diagnose-rules--validate---diff--base-mainnet-autonomous-execution-under-strict-6-stage-audit-gate); the v0.1/v0.2 testnet-only rule is lifted), but **mainnet RPC URLs still must not be committed to the repo** — not in `.env`, not in `.env.example`, not in tests, not in fixtures, not in CI workflows. The user supplies their own mainnet RPC URL at runtime via env or `--rpc-url`. CI never uses mainnet.
 
 3. **Never invent x402 spec details.** Read from `coinbase/x402`, `x402.org`, and the `x402` npm package. When uncertain, ask. Do not guess header formats, error codes, or facilitator behavior.
 
@@ -35,6 +37,35 @@ Canonical reference: [coinbase/x402 Issue #1062](https://github.com/coinbase/x40
 7. **One thing per PR.** If a PR description has the word "also", split it.
 
 8. **The published bundle defines the runtime dependency set.** Anything imported by code in `dist/` (whatever `tsconfig.build.json` emits) belongs in `dependencies`. Anything that exists only in `src/dogfood/`, `scripts/`, or `tests/` belongs in `devDependencies`. The `scripts/check-publish-surface.mjs` CI step enforces this; if it fails, the fix is to reclassify, not to suppress. See [v0.2.3 supply-chain post-mortem context](./CHANGELOG.md) for the original violation (`hono`/`x402-fetch`/`x402-hono` ship as `dependencies` in v0.2.2 despite zero imports from `dist/`, dragging the wallet-SDK transitive tree — and its CVE list — into every end-user install).
+
+## Strict audit gate (autonomous mode)
+
+Adopted 2026-05-14 in [ADR-003](./DECISIONS.md#adr-003-v03-feature-pick--bazaar-check-headline--5-facilitator-aware-diagnose-rules--validate---diff--base-mainnet-autonomous-execution-under-strict-6-stage-audit-gate) for the v0.3.0 cycle. **Active for every ticket while the project is in autonomous mode** (user not in the review loop). When the user is reviewing PRs in person again, the gate stays but the audit log in the PR body becomes optional rather than required.
+
+**Why it exists:** the gate substitutes for the user's review judgment when the user is hands-off. Without it, autonomous mode degenerates into "ship the obvious diff" and edge cases ride along.
+
+**Six stages. All must pass before the PR is self-merged.** Audit findings go into the PR body so the substitution is auditable post-hoc.
+
+| Stage                    | Check                                                                                                                                                                              | Pass condition                                                   |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| 1. Pre-work              | Branch off latest `v1`; no concurrent-ticket conflict; dependencies (other tickets) merged or stubbed                                                                              | Clean `git status`, branch from origin/v1 HEAD                   |
+| 2. Implementation        | All AC items from the Jira ticket coded                                                                                                                                            | Diff covers each AC checkbox; no drive-by changes                |
+| 3. Correctness audit     | `pnpm typecheck` + `pnpm lint` + `pnpm test` + `pnpm build` + `pnpm check:publish-surface` all clean                                                                               | All five exit 0; no skipped tests except documented `X402_E2E=1` |
+| 4. Edge-case enumeration | Enumerate ≥5 edge cases specific to the change; each tested OR documented as safe-to-skip with rationale                                                                           | Written into PR body                                             |
+| 5. Re-audit (gap check)  | Re-read Notion plan + Jira AC; compare against actual diff. Check for missing AC items, drive-by changes, breaking changes to v0.2.x surface, interactions with other v0.3 tickets | Written into PR body as "no gaps" with diff anchor lines         |
+| 6. Ship                  | PR to `v1` with audit log in body; CI green on both Node 20 + 22; self-merge; Jira transition to Done with audit summary                                                           | Workflow run green; PR merged; ticket Done                       |
+
+**Edge cases always enumerated** (in addition to ticket-specific ones):
+
+- Missing / malformed input (empty string, null, oversized payload)
+- Network failures (timeout, DNS, TLS error)
+- Concurrent operations (race conditions on the proxy event bus)
+- Boundary values (zero, MAX_SAFE_INTEGER, negative)
+- Non-ASCII / unicode in payloads
+
+**Drive-by guard:** if there's a temptation to "clean up something not in the ticket," file a follow-up ticket and skip the change in this PR. Hard rule #7 ("one thing per PR") is enforced strictly.
+
+**Hard blockers:** if a true blocker appears (CI infrastructure failure, npm registry down, branch protection misconfig), pause and explain in the PR thread — but default to keep going on every other class of problem.
 
 ## Project structure
 

@@ -114,3 +114,11 @@ Two protocol surfaces are recognized:
 | v2      | `PAYMENT-SIGNATURE` | `PAYMENT-RESPONSE`   | `2`                      |
 
 v0.1 of x402trace normalizes both into the same `PaymentPayload` / `FacilitatorResponse` shape. The `x402Version` field on `exchange.challenge` and `exchange.payment` events records which surface was on the wire so downstream tooling can branch when needed.
+
+## Related: `DiagnosticContext` (in-memory only, not part of the JSONL contract)
+
+The X402-33 facilitator-aware diagnose rules (`cdp-min-amount`, `self-payment`, `facilitator-throttling`, `extension-responses-missing`, `gas-estimation-failure`) read from an in-memory `DiagnosticContext.facilitator` field plus a `DiagnosticContext.expectsBazaarExtensions` flag. These fields are NOT currently captured in the JSONL events above — they're populated by live callers (`bazaar-check` from X402-32, `validate --diff` from X402-35) that drive facilitator HTTP themselves.
+
+When a future ticket needs the facilitator-aware rules to run against an `explain`-style replay of a captured JSONL log, the canonical surface to extend is the JSONL — likely by enriching `exchange.settlement` with `httpStatus`, `headers` (lowercase-key map), and `errorMessage` fields. That would be a schema change requiring an ADR per ADR-001.
+
+Canonical TypeScript shape (until/unless it lands in JSONL): see `FacilitatorInteraction` in [`src/diagnose/types.ts`](../diagnose/types.ts).

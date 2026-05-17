@@ -305,6 +305,177 @@ export const assetAddressRule: DiagnosticRule = {
   },
 };
 
+// ─── X402-33 facilitator-aware rules ────────────────────────────────
+//
+// These five rules cover footguns that cost Discord-cohort operators
+// multi-day debugging sessions. Each maps to a named voice on Discord
+// or GitHub Issues (ADR-003 evidence base). They skip when
+// `ctx.facilitator` (or, for `extension-responses-missing`,
+// `ctx.expectsBazaarExtensions`) is absent — so they are pure
+// additions to the existing rule surface; callers that don't populate
+// the facilitator interaction see no behavior change.
+
+const CDP_FACILITATOR_HOST = "cdp.coinbase.com";
+/** $0.001 USDC at 6 decimals — the documented CDP facilitator minimum.
+ *  Surfaced by DukeOphir/Coinbase team in the Discord transcript after
+ *  akiyama's multi-day chase of a generic `invalid_payload`. */
+const CDP_MIN_AMOUNT_ATOMIC = 1000n;
+
+/**
+ * The CDP facilitator silently rejects payments below 1000 atomic USDC
+ * units ($0.001) with a generic `invalid_payload` and no amount hint.
+ * Not in the public docs as of 2026-05-13. akiyama lost multiple days
+ * on this; flagging it pre-emptively is the highest-leverage diagnose
+ * surface for operators on the CDP facilitator path.
+ */
+export const cdpMinAmountRule: DiagnosticRule = {
+  name: "cdp-min-amount",
+  run(ctx) {
+    const url = ctx.facilitator?.url;
+    if (!url) return skip(this.name, "no facilitator URL in context");
+    if (!url.toLowerCase().includes(CDP_FACILITATOR_HOST)) {
+      return skip(this.name, `facilitator is not CDP (${url})`);
+    }
+    let required: bigint;
+    try {
+      required = BigInt(ctx.requirements.maxAmountRequired);
+    } catch {
+      return skip(this.name, "requirements.maxAmountRequired is not a parsable bigint");
+    }
+    if (required >= CDP_MIN_AMOUNT_ATOMIC) {
+      return pass(
+        this.name,
+        `required ${required} >= CDP minimum ${CDP_MIN_AMOUNT_ATOMIC} ($0.001 USDC)`,
+      );
+    }
+    return fail(
+      this.name,
+      `required ${required} < CDP facilitator minimum ${CDP_MIN_AMOUNT_ATOMIC} ($0.001 USDC) — CDP rejects with generic invalid_payload`,
+      `set maxAmountRequired >= ${CDP_MIN_AMOUNT_ATOMIC} (atomic units = $0.001 USDC) or use a non-CDP facilitator. The threshold is not in public CDP docs as of 2026-05-13.`,
+    );
+  },
+};
+
+/**
+ * `payer == payTo` (signing from the same wallet that receives the
+ * payment) is rejected by some facilitators — notably CDP returns a
+ * generic invalid_payload. TerraDeed hit this on Base mainnet and had
+ * to switch CDP → xpay to clear it. We catch the misconfiguration
+ * pre-flight rather than letting the operator chase it.
+ */
+export const selfPaymentRule: DiagnosticRule = {
+  name: "self-payment",
+  run(ctx) {
+    if (!ctx.payment) return skip(this.name, "no payment payload to check payer");
+    const payer = ctx.payment.payload.authorization.from.toLowerCase();
+    const payTo = ctx.requirements.payTo.toLowerCase();
+    if (payer !== payTo) {
+      return pass(this.name, `payer differs from payTo (no self-payment)`);
+    }
+    return fail(
+      this.name,
+      `payer and payTo are the same address: ${ctx.requirements.payTo}`,
+      `self-payment is rejected by some facilitators (notably CDP returns invalid_payload). Sign from a different wallet, or route through a facilitator that allows it (e.g. xpay).`,
+    );
+  },
+};
+
+/**
+ * Facilitator returning 403/429 without an actionable body is almost
+ * always rate-limiting. The CDP facilitator has no documented rate
+ * limit; tanissian hit this with 30s gaps between requests. The fix is
+ * to back off — flagging the pattern saves the operator from chasing
+ * payload validation.
+ */
+export const facilitatorThrottlingRule: DiagnosticRule = {
+  name: "facilitator-throttling",
+  run(ctx) {
+    if (!ctx.facilitator) return skip(this.name, "no facilitator interaction in context");
+    const { statusCode } = ctx.facilitator;
+    if (statusCode !== 403 && statusCode !== 429) {
+      return pass(this.name, `facilitator returned ${statusCode} (not a throttling code)`);
+    }
+    return fail(
+      this.name,
+      `facilitator returned HTTP ${statusCode} — likely throttling`,
+      `back off and retry with exponential delay (start at 5s, double up to 60s). No documented rate limit; Discord report (tanissian) hit this with 30s gaps. If it persists, try a different facilitator.`,
+    );
+  },
+};
+
+/**
+ * The canonical [#2207](https://github.com/x402-foundation/x402/issues/2207)
+ * cluster: settlement succeeds (200 + success:true), on-chain tx
+ * confirms, but the response is missing the `EXTENSION-RESPONSES`
+ * header — and as a result, Bazaar / agentic.market never indexes the
+ * service. 6+ independent reporters in the GitHub thread. The rule
+ * fires only when the caller has set `expectsBazaarExtensions: true`
+ * (so non-bazaar callers don't see spurious fails).
+ */
+export const extensionResponsesMissingRule: DiagnosticRule = {
+  name: "extension-responses-missing",
+  run(ctx) {
+    if (!ctx.expectsBazaarExtensions) {
+      return skip(this.name, "caller did not signal expectsBazaarExtensions");
+    }
+    if (!ctx.facilitator) return skip(this.name, "no facilitator interaction in context");
+    if (ctx.facilitator.stage !== "settle") {
+      return skip(this.name, `interaction stage is ${ctx.facilitator.stage}, not settle`);
+    }
+    if (ctx.facilitator.statusCode !== 200) {
+      return skip(this.name, `settle returned ${ctx.facilitator.statusCode}, not 200`);
+    }
+    if (ctx.facilitator.response?.success !== true) {
+      return skip(this.name, "settle response did not report success:true");
+    }
+    const headers = ctx.facilitator.headers ?? {};
+    const hasExtensionResponses = Object.keys(headers).some(
+      (k) => k.toLowerCase() === "extension-responses",
+    );
+    if (hasExtensionResponses) {
+      return pass(this.name, "EXTENSION-RESPONSES header present on successful settle");
+    }
+    return fail(
+      this.name,
+      "settle succeeded on-chain but response did NOT include EXTENSION-RESPONSES header — this is the upstream #2207 bug, not your implementation",
+      `your service implementation looks correct. The missing header is an upstream CDP facilitator bug tracked at https://github.com/x402-foundation/x402/issues/2207 (94 comments, 6+ independent reporters). Bazaar indexing requires this header; until CDP ships a fix, manual ecosystem listing via the foundation team is the workaround.`,
+    );
+  },
+};
+
+/**
+ * "Unable to estimate gas" errors on `/settle` are an intermittent
+ * Base-mainnet failure mode tracked in [#1065](https://github.com/x402-foundation/x402/issues/1065):
+ * 40% success rate with identical nonces, signatures, EIP-712 domain.
+ * Dev.to (mkmkkkkk) independently quotes ~60% failure rate. The pattern
+ * is non-deterministic — operators chase it as if it were a code bug
+ * for days before realizing it's upstream chain/facilitator flake.
+ * Catching the error text saves the chase.
+ */
+const GAS_ESTIMATION_ERROR_PHRASE = "unable to estimate gas";
+export const gasEstimationFailureRule: DiagnosticRule = {
+  name: "gas-estimation-failure",
+  run(ctx) {
+    if (!ctx.facilitator) return skip(this.name, "no facilitator interaction in context");
+    const haystack = [
+      ctx.facilitator.errorMessage,
+      ctx.facilitator.response?.invalidReason,
+      ctx.facilitator.response?.errorReason,
+    ]
+      .filter((s): s is string => typeof s === "string")
+      .join(" ")
+      .toLowerCase();
+    if (!haystack.includes(GAS_ESTIMATION_ERROR_PHRASE)) {
+      return pass(this.name, "no gas-estimation error pattern detected");
+    }
+    return fail(
+      this.name,
+      `facilitator returned an 'unable to estimate gas' error — known intermittent Base-mainnet flake (GitHub #1065 reports 40% failure with identical code)`,
+      `retry with exponential backoff (start at 3s, double up to 30s). This is upstream of x402trace; your code is fine. Pattern is non-deterministic across identical requests — multiple Discord/Dev.to reports converge on ~40-60% failure rate.`,
+    );
+  },
+};
+
 export const ALL_RULES: readonly DiagnosticRule[] = [
   networkMatchRule,
   schemeMatchRule,
@@ -316,6 +487,11 @@ export const ALL_RULES: readonly DiagnosticRule[] = [
   nonceFreshRule,
   walletKindRule,
   assetAddressRule,
+  cdpMinAmountRule,
+  selfPaymentRule,
+  facilitatorThrottlingRule,
+  extensionResponsesMissingRule,
+  gasEstimationFailureRule,
 ];
 
 /**
