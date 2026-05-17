@@ -50,3 +50,11 @@ temp/
 # ─── x402trace runtime artifacts ────────────────────────────────
 .x402trace/
 reconciliation.jsonl
+
+# ─── Session-local evidence artifacts ───────────────────────────
+# Discord/Slack/IM transcripts cited from ADRs and Notion plans live
+# locally for evidence; not committed because they contain third-party
+# usernames + identifiers we don't have permission to publish.
+discord-x402.md
+discord-*.md
+transcripts/
