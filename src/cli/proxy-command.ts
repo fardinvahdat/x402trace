@@ -16,6 +16,7 @@
 
 import { createChainClient } from "../chain/index.js";
 import type { ChainTransfer } from "../chain/types.js";
+import { parseChainOrUndefined } from "./chain-flag.js";
 import { createDecoder, formatHuman, formatJson, type LogFormat } from "../decoder/index.js";
 import { JsonlSink } from "../proxy/jsonl-sink.js";
 import { createProxy } from "../proxy/index.js";
@@ -34,6 +35,12 @@ export interface ProxyCommandOptions {
   readonly logSecrets?: boolean;
   readonly reconcile?: boolean;
   readonly rpcUrl?: string;
+  /**
+   * Chain selection for the reconciliation watcher. Default `"base-sepolia"`.
+   * `"base"` enables Base mainnet support per ADR-003; an RPC URL must be
+   * supplied via `--rpc-url` or `BASE_RPC_URL` env (no default).
+   */
+  readonly chain?: "base-sepolia" | "base";
   readonly watchTimeoutMs?: number;
   readonly upstreamTimeoutMs?: number;
 }
@@ -74,6 +81,7 @@ export interface ResolvedProxyConfig {
   readonly logSecrets: boolean;
   readonly reconcile: boolean;
   readonly rpcUrl: string | undefined;
+  readonly chain: "base-sepolia" | "base";
   readonly watchTimeoutMs: number;
   readonly upstreamTimeoutMs: number | undefined;
 }
@@ -96,6 +104,7 @@ export function resolveProxyConfig(
       logSecrets: opts.logSecrets ?? false,
       reconcile: opts.reconcile ?? truthy(env.X402TRACE_RECONCILE),
       rpcUrl: opts.rpcUrl ?? env.BASE_RPC_URL,
+      chain: opts.chain ?? parseChainOrUndefined(env.BASE_CHAIN_ID) ?? "base-sepolia",
       watchTimeoutMs:
         opts.watchTimeoutMs ??
         toIntOrNull(env.X402TRACE_WATCH_TIMEOUT_MS) ??
@@ -129,6 +138,7 @@ export async function runProxyCommand(
     logSecrets,
     reconcile,
     rpcUrl,
+    chain: chainKey,
     watchTimeoutMs,
     upstreamTimeoutMs,
   } = resolved.config;
@@ -150,13 +160,26 @@ export async function runProxyCommand(
   ctx.stdout.write(
     color.paint("bold", `x402trace proxy listening on ${proxyHandle.url}`) + `  →  ${upstream}\n`,
   );
+  if (chainKey === "base") {
+    // Mainnet banner: visual cue that real funds are in scope. Always
+    // emitted in human format; JSON output also writes it to stderr so
+    // it's still visible without polluting the structured stream.
+    const banner = color.paint(
+      "yellow",
+      "⚠ MAINNET (chain=base) — real funds in scope; reconciliation watches Base mainnet USDC",
+    );
+    if (format === "human") ctx.stdout.write(`${banner}\n`);
+    else ctx.stderr.write(`${banner}\n`);
+  }
   ctx.stdout.write(
-    `${color.paint("dim", "log:")} ${logPath}  ${color.paint("dim", "format:")} ${format}  ${color.paint("dim", "secrets:")} ${logSecrets ? "shown" : "redacted"}  ${color.paint("dim", "reconcile:")} ${reconcile ? "on" : "off"}\n`,
+    `${color.paint("dim", "log:")} ${logPath}  ${color.paint("dim", "format:")} ${format}  ${color.paint("dim", "secrets:")} ${logSecrets ? "shown" : "redacted"}  ${color.paint("dim", "reconcile:")} ${reconcile ? "on" : "off"}  ${color.paint("dim", "chain:")} ${chainKey}\n`,
   );
 
   const decoder = createDecoder({ logSecrets });
   const engine = reconcile ? createReconciliationEngine({ watchTimeoutMs }) : null;
-  const chain = reconcile ? createChainClient({ ...(rpcUrl ? { rpcUrl } : {}) }) : null;
+  const chain = reconcile
+    ? createChainClient({ chain: chainKey, ...(rpcUrl ? { rpcUrl } : {}) })
+    : null;
 
   // --- Proxy / decoder event loop ---
   const proxySub = proxyHandle.events.subscribe();

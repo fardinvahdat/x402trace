@@ -8,7 +8,7 @@
 
 ![x402trace catching a real Base Sepolia timeout-reconciliation failure end-to-end](./examples/cast/e2e-timeout-reconciliation.gif)
 
-*Real-time capture of the `RECONCILED ⚠ settled-but-server-thinks-not` detection against live Base Sepolia + `x402.org/facilitator`. ~17 seconds, real on-chain tx. Cast file replayable with `asciinema play examples/cast/e2e-timeout-reconciliation.cast`.*
+_Real-time capture of the `RECONCILED ⚠ settled-but-server-thinks-not` detection against live Base Sepolia + `x402.org/facilitator`. ~17 seconds, real on-chain tx. Cast file replayable with `asciinema play examples/cast/e2e-timeout-reconciliation.cast`._
 
 ## When to use x402trace
 
@@ -130,6 +130,28 @@ The full pre/during/post-payment debugger:
 
 The authoritative flag list is `x402trace --help` (or per-subcommand `--help`) — wired into the unit tests so it can't drift.
 
+### Chain selection (Base mainnet, v0.3+)
+
+x402trace v0.3 enables Base mainnet alongside the default Base Sepolia. The `--chain` flag (or `BASE_CHAIN_ID` env) selects the chain; default stays `base-sepolia` for backward compatibility.
+
+```bash
+# Default — Base Sepolia (unchanged)
+x402trace proxy --upstream <url> --reconcile
+
+# Base mainnet — RPC URL must be supplied; there is no built-in mainnet endpoint
+x402trace proxy --upstream <url> --reconcile --chain base --rpc-url https://your-mainnet-rpc
+
+# Validate a mainnet wallet (read-only)
+x402trace validate 0xYourWallet https://your-service --chain base --rpc-url https://your-mainnet-rpc
+```
+
+**Mainnet safety notes:**
+
+- x402trace never signs transactions and never broadcasts. The worst case from a misconfigured mainnet run is a failed read or a misleading reconciliation verdict.
+- The buyer's wallet (which signs the EIP-3009 authorization) is upstream of x402trace. The buyer's risk model is unchanged.
+- No mainnet RPC URL is shipped — supply your own via `--rpc-url` or `BASE_RPC_URL` env. Mainnet startup prints a `⚠ MAINNET` banner so accidental mainnet runs are visible at a glance.
+- CI never uses mainnet (CLAUDE.md hard rule #2). Don't commit a populated mainnet URL.
+
 ### `validate` — example output
 
 ![x402trace validate against a live Base Sepolia wallet — all 10 rules pass](./examples/cast/validate-demo.gif)
@@ -175,7 +197,7 @@ That's the canonical [coinbase/x402#1062](https://github.com/coinbase/x402/issue
 **Q: The facilitator returned `invalid_payload` with no explanation. How do I figure out why?**
 Save the captured 402 (proxy does this automatically) and run `x402trace explain <log>`. It runs 10 rules against the captured state — most `invalid_payload` cases turn out to be a `validBefore` expiry, value mismatch, or recipient mismatch, each rendered as a single failed rule with an actionable fix.
 
-**Q: Can I check whether a wallet *can* pay a service without actually signing?**
+**Q: Can I check whether a wallet _can_ pay a service without actually signing?**
 Yes — `x402trace validate <wallet> <service-url>` is read-only. It fetches the 402, queries chain state (USDC balance, EIP-3009 nonce, wallet kind), runs the same rules `explain` uses. Exits `0` if would-succeed, `2` if would-fail.
 
 **Q: Does this work on mainnet?**
@@ -192,15 +214,15 @@ No. As of v0.2.3 the runtime tree is `commander` + `dotenv` + `viem` + `x402` on
 
 ## How x402trace compares
 
-| Capability | x402trace | xpay | x402scan | x402lint |
-|---|:-:|:-:|:-:|:-:|
-| Local proxy + JSONL audit log | ✅ | — | — | — |
-| Timeout reconciliation (catches [#1062](https://github.com/coinbase/x402/issues/1062)) | ✅ | partial | — | — |
-| Pre-flight wallet check (no signing) | ✅ | — | — | — |
-| Plain-English 402 diagnosis | ✅ | — | — | partial |
-| Static config validation | partial | — | — | ✅ |
-| Network explorer / discovery | — | — | ✅ | — |
-| Spending controls | — | ✅ | — | — |
+| Capability                                                                             | x402trace |  xpay   | x402scan | x402lint |
+| -------------------------------------------------------------------------------------- | :-------: | :-----: | :------: | :------: |
+| Local proxy + JSONL audit log                                                          |    ✅     |    —    |    —     |    —     |
+| Timeout reconciliation (catches [#1062](https://github.com/coinbase/x402/issues/1062)) |    ✅     | partial |    —     |    —     |
+| Pre-flight wallet check (no signing)                                                   |    ✅     |    —    |    —     |    —     |
+| Plain-English 402 diagnosis                                                            |    ✅     |    —    |    —     | partial  |
+| Static config validation                                                               |  partial  |    —    |    —     |    ✅    |
+| Network explorer / discovery                                                           |     —     |    —    |    ✅    |    —     |
+| Spending controls                                                                      |     —     |   ✅    |    —     |    —     |
 
 x402trace is the **debugger** in the x402 toolbox — built for the narrow, expensive moment when a payment fell into the gap between facilitator and chain. The other tools target adjacent jobs (routing, explorer, lint, controls) and compose well. Full comparison in [SPEC.md § 8](./SPEC.md#8-differentiation).
 

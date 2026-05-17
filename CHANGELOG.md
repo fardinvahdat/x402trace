@@ -11,6 +11,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Base mainnet support (X402-34).** New `--chain <base-sepolia|base>` flag on `proxy`, `validate`, `inspect`. Defaults to `base-sepolia` — no surprise change for existing users. `--chain base` switches the chain client to Base mainnet (chain ID 8453), with the canonical mainnet USDC address (`0x833589fCD…`). Mainnet RPC URL must be supplied via `--rpc-url` or `BASE_RPC_URL` env; **no default mainnet endpoint is shipped** per CLAUDE.md hard rule #2. New `BASE_CHAIN_ID` env (accepts `base`/`base-sepolia` or numeric chain IDs `8453`/`84532`). Mainnet startup banner emits to stdout (human format) or stderr (JSON format) so operators know real funds are in scope. New `ChainKey` exported type, `BASE_USDC` constant, `usdcAddressFor()` helper.
 - **Five facilitator-aware diagnose rules (X402-33)** in `src/diagnose/rules.ts`, each backed by named voices from the Discord transcript or GitHub Issues per [ADR-003](./DECISIONS.md):
   - `cdp-min-amount` — flags CDP-facilitator payments below the documented $0.001 USDC minimum (1000 atomic units). Surfaces the silent `invalid_payload` rejection akiyama lost multiple days to.
   - `self-payment` — flags `payer == payTo` configurations. CDP rejects these with a generic `invalid_payload`; TerraDeed had to switch CDP → xpay to clear it.
