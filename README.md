@@ -130,6 +130,17 @@ The full pre/during/post-payment debugger:
 
 The authoritative flag list is `x402trace --help` (or per-subcommand `--help`) — wired into the unit tests so it can't drift.
 
+### `versions` (v0.3+) — SDK skew audit
+
+Compares your local `package.json` `@x402/*` versions and the service's 402 version hints against a bundled known-skew table. Catches the kind of multi-day debugging chase Myceliaman14 (Python SDK pre-v2 → TS V2 refactor) and Poteshniy (`@x402/fetch 2.10.0` extension-echo bug) hit on Discord.
+
+```bash
+x402trace versions https://your-service.example/api/route
+x402trace versions https://… --log json
+```
+
+Output names each match with severity (`warning` / `blocking`), the upstream evidence link (#2157, #2207), and a concrete fix. Exit `0` = no skew, `2` = at least one match.
+
 ### `validate --diff` (v0.3+) — cross-facilitator drift detection
 
 When a payment works on one facilitator but fails on another (TerraDeed's CDP → xpay switch in the Discord transcript), `--diff` runs the same synthesised payload through both `/verify` endpoints in parallel and shows you exactly where they disagree.

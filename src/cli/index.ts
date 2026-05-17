@@ -21,6 +21,7 @@ import { runExplainCommand } from "./explain-command.js";
 import { runInspectCommand } from "./inspect-command.js";
 import { runProxyCommand } from "./proxy-command.js";
 import { runValidateCommand } from "./validate-command.js";
+import { runVersionsCommand } from "./versions-command.js";
 import { EXIT_SUCCESS, EXIT_USAGE, type ExitCode } from "./exit-codes.js";
 
 // Keep in sync with package.json `version`. A runtime read from
@@ -80,6 +81,10 @@ interface BazaarCheckFlags {
   chain?: string;
   payerHint?: string;
   discoveryBaseUrl?: string;
+}
+
+interface VersionsFlags {
+  log?: string;
 }
 
 function validateChain(value: string): "base-sepolia" | "base" {
@@ -254,6 +259,24 @@ export async function runCli(argv: readonly string[], ctx: CliContext): Promise<
       exit = await runExplainCommand(
         {
           logFile,
+          ...(log !== undefined ? { log } : {}),
+        },
+        { stdout: ctx.stdout, stderr: ctx.stderr },
+      );
+    });
+
+  program
+    .command("versions")
+    .description(
+      "SDK skew audit: compares local package.json @x402/* versions + service 402 version hints against a bundled known-skew table.",
+    )
+    .argument("<service-url>", "Service URL that responds 402 with an x402 challenge")
+    .option("--log <human|json>", "Stdout format (default 'human')", validateLogFormat)
+    .action(async (service: string, flags: VersionsFlags) => {
+      const log = flags.log as LogFormat | undefined;
+      exit = await runVersionsCommand(
+        {
+          service,
           ...(log !== undefined ? { log } : {}),
         },
         { stdout: ctx.stdout, stderr: ctx.stderr },
