@@ -130,6 +130,20 @@ The full pre/during/post-payment debugger:
 
 The authoritative flag list is `x402trace --help` (or per-subcommand `--help`) — wired into the unit tests so it can't drift.
 
+### `validate --diff` (v0.3+) — cross-facilitator drift detection
+
+When a payment works on one facilitator but fails on another (TerraDeed's CDP → xpay switch in the Discord transcript), `--diff` runs the same synthesised payload through both `/verify` endpoints in parallel and shows you exactly where they disagree.
+
+```bash
+# Built-in aliases: cdp, xpay, payai, x402.org. Full URLs also accepted.
+x402trace validate 0xYourWallet https://your-service.example/api/route --diff cdp,xpay
+
+# JSON output for CI; per-facilitator timeout knob
+x402trace validate 0xYourWallet https://… --diff cdp,xpay --log json --diff-timeout-ms 5000
+```
+
+Each row reports the per-facilitator HTTP status + body, captured rejection reason, and any X402-33 facilitator-aware rules firing (e.g. CDP minimum amount, throttling 403/429). Exit codes: `0` = at least one accepts, `2` = all reject, `3` = all timeout.
+
 ### `bazaar-check` (v0.3+) — pre-ship Bazaar / agentic.market validator
 
 The headline of v0.3. Answers the question Discord operators are asking each other in real-time: **"is my Bazaar / agentic.market integration implemented correctly, or is the bug upstream of me?"**
