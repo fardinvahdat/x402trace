@@ -130,6 +130,41 @@ The full pre/during/post-payment debugger:
 
 The authoritative flag list is `x402trace --help` (or per-subcommand `--help`) — wired into the unit tests so it can't drift.
 
+### `bazaar-check` (v0.3+) — pre-ship Bazaar / agentic.market validator
+
+The headline of v0.3. Answers the question Discord operators are asking each other in real-time: **"is my Bazaar / agentic.market integration implemented correctly, or is the bug upstream of me?"**
+
+```bash
+# Default — Base Sepolia
+x402trace bazaar-check https://your-service.example/api/route
+
+# Mainnet (real funds in scope; banner printed)
+x402trace bazaar-check https://your-service.example/api/route --chain base --rpc-url https://your-mainnet-rpc
+
+# With a payer-hint (enables the self-payment guard)
+x402trace bazaar-check https://your-service.example/api/route --payer-hint 0xYourPayer
+```
+
+Four read-only checks compose into a single bottom-line verdict:
+
+| Check          | What it validates                                                                                                                                                                    |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `well-known`   | `/.well-known/x402` manifest exists with `name` + `description` + `accepts[]`                                                                                                        |
+| `challenge`    | The protected endpoint returns 402 with a valid x402 v1/v2 body AND `extensions.bazaar.{name, description}`                                                                          |
+| `self-payment` | When `--payer-hint` is supplied, flags `payer == payTo` (CDP rejects this with a generic `invalid_payload`)                                                                          |
+| `indexing`     | CDP discovery (`/v2/x402/discovery/resources?payTo=…`) returns non-empty resources (else: matches the [#2207](https://github.com/x402-foundation/x402/issues/2207) upstream pattern) |
+
+**Exit codes:**
+
+- `0` — looks correct
+- `2` — found issues in your implementation (fix the failed check)
+- `3` — your code looks correct; the bug is upstream (e.g. the canonical [#2207](https://github.com/x402-foundation/x402/issues/2207) Bazaar indexing failure — 94 reports). The verdict prose names the GitHub issue so you don't have to map the symptom.
+
+**Scope notes:**
+
+- Read-only. Never signs, never broadcasts.
+- The opt-in paid-pass mode (`--with-wallet`) is **deferred to v0.3.1** — see [ADR-003](./DECISIONS.md). The static-analysis-only checks shipped here cover the dominant Discord pain (Bazaar indexing failure) without needing signing infrastructure.
+
 ### Chain selection (Base mainnet, v0.3+)
 
 x402trace v0.3 enables Base mainnet alongside the default Base Sepolia. The `--chain` flag (or `BASE_CHAIN_ID` env) selects the chain; default stays `base-sepolia` for backward compatibility.

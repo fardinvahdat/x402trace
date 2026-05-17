@@ -16,6 +16,7 @@
 import "dotenv/config";
 import { Command } from "commander";
 import type { LogFormat } from "../decoder/types.js";
+import { runBazaarCheckCommand } from "./bazaar-check-command.js";
 import { runExplainCommand } from "./explain-command.js";
 import { runInspectCommand } from "./inspect-command.js";
 import { runProxyCommand } from "./proxy-command.js";
@@ -70,6 +71,13 @@ interface ValidateFlags {
 
 interface ExplainFlags {
   log?: string;
+}
+
+interface BazaarCheckFlags {
+  log?: string;
+  chain?: string;
+  payerHint?: string;
+  discoveryBaseUrl?: string;
 }
 
 function validateChain(value: string): "base-sepolia" | "base" {
@@ -235,6 +243,43 @@ export async function runCli(argv: readonly string[], ctx: CliContext): Promise<
           ...(log !== undefined ? { log } : {}),
         },
         { stdout: ctx.stdout, stderr: ctx.stderr },
+      );
+    });
+
+  program
+    .command("bazaar-check")
+    .description(
+      "Pre-ship Bazaar / agentic.market validator: well-known manifest, 402 challenge, indexing status. Read-only.",
+    )
+    .argument("<service-url>", "Service URL that responds 402 with an x402 challenge")
+    .option("--log <human|json>", "Stdout format (default 'human')", validateLogFormat)
+    .option(
+      "--chain <base-sepolia|base>",
+      "Chain for the Bazaar indexing query (default 'base-sepolia')",
+      validateChain,
+    )
+    .option(
+      "--payer-hint <address>",
+      "Optional payer address; enables the self-payment guard (flags payer == payTo)",
+    )
+    .option(
+      "--discovery-base-url <url>",
+      "Override the CDP discovery base URL (default https://api.cdp.coinbase.com)",
+    )
+    .action(async (service: string, flags: BazaarCheckFlags) => {
+      const log = flags.log as LogFormat | undefined;
+      const chain = flags.chain as "base-sepolia" | "base" | undefined;
+      exit = await runBazaarCheckCommand(
+        {
+          service,
+          ...(log !== undefined ? { log } : {}),
+          ...(chain !== undefined ? { chain } : {}),
+          ...(flags.payerHint !== undefined ? { payerHint: flags.payerHint } : {}),
+          ...(flags.discoveryBaseUrl !== undefined
+            ? { discoveryBaseUrl: flags.discoveryBaseUrl }
+            : {}),
+        },
+        { stdout: ctx.stdout, stderr: ctx.stderr, env: ctx.env },
       );
     });
 
