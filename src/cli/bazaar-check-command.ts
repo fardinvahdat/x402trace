@@ -24,6 +24,8 @@ export interface BazaarCheckCommandOptions {
   readonly payerHint?: string;
   /** Override the CDP discovery base URL for tests / alternate facilitators. */
   readonly discoveryBaseUrl?: string;
+  /** Per-request timeout for bazaar-check HTTP probes. */
+  readonly timeoutMs?: number;
 }
 
 export interface BazaarCheckRunContext {
@@ -65,12 +67,22 @@ export async function runBazaarCheckCommand(
     else ctx.stderr.write(`${banner}\n`);
   }
 
+  const timeoutMs = opts.timeoutMs ?? 10_000;
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    ctx.stderr.write(
+      `error: --timeout-ms must be a positive number (got '${String(opts.timeoutMs)}')\n`,
+    );
+    return EXIT_USAGE;
+  }
+
+  const fetcher = withRequestTimeout(ctx.fetcher ?? fetch, timeoutMs);
+
   const report = await runBazaarCheck({
     serviceUrl: service,
     chain: chainKey,
     ...(opts.payerHint !== undefined ? { payerHint: opts.payerHint } : {}),
     ...(opts.discoveryBaseUrl !== undefined ? { discoveryBaseUrl: opts.discoveryBaseUrl } : {}),
-    ...(ctx.fetcher !== undefined ? { fetcher: ctx.fetcher } : {}),
+    fetcher,
   });
 
   if (format === "json") {
@@ -80,6 +92,18 @@ export async function runBazaarCheckCommand(
   }
 
   return report.verdict.exitCode;
+}
+
+function withRequestTimeout(fetcher: typeof fetch, timeoutMs: number): typeof fetch {
+  return (async (input: Parameters<typeof fetch>[0], init?: RequestInit): Promise<Response> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetcher(input, { ...init, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  }) as typeof fetch;
 }
 
 function formatReportHuman(report: BazaarReport, color: Colorizer): string {

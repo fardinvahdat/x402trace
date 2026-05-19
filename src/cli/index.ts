@@ -81,6 +81,7 @@ interface BazaarCheckFlags {
   chain?: string;
   payerHint?: string;
   discoveryBaseUrl?: string;
+  timeoutMs?: string;
 }
 
 interface VersionsFlags {
@@ -303,6 +304,7 @@ export async function runCli(argv: readonly string[], ctx: CliContext): Promise<
       "--discovery-base-url <url>",
       "Override the CDP discovery base URL (default https://api.cdp.coinbase.com)",
     )
+    .option("--timeout-ms <ms>", "Per-request timeout for bazaar-check HTTP probes (default 10000)")
     .action(async (service: string, flags: BazaarCheckFlags) => {
       const log = flags.log as LogFormat | undefined;
       const chain = flags.chain as "base-sepolia" | "base" | undefined;
@@ -315,6 +317,7 @@ export async function runCli(argv: readonly string[], ctx: CliContext): Promise<
           ...(flags.discoveryBaseUrl !== undefined
             ? { discoveryBaseUrl: flags.discoveryBaseUrl }
             : {}),
+          ...(flags.timeoutMs !== undefined ? { timeoutMs: Number(flags.timeoutMs) } : {}),
         },
         { stdout: ctx.stdout, stderr: ctx.stderr, env: ctx.env },
       );

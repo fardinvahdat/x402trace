@@ -204,6 +204,39 @@ describe("bazaar-check pipeline (hermetic)", () => {
     expect(text).toMatch(/VERDICT/);
   });
 
+  it("aborts hung HTTP probes after --timeout-ms", async () => {
+    const stdout = captureStream();
+    const stderr = captureStream();
+    const hangingFetcher = ((_: Parameters<typeof fetch>[0], init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => {
+            const err = new Error("aborted");
+            err.name = "AbortError";
+            reject(err);
+          },
+          { once: true },
+        );
+      })) as typeof fetch;
+
+    const code = await runBazaarCheckCommand(
+      { service: SERVICE, log: "json", chain: "base-sepolia", timeoutMs: 5 },
+      {
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+        env: {},
+        fetcher: hangingFetcher,
+      },
+    );
+
+    expect(code).toBe(2);
+    const out = JSON.parse(stdout.buf.join(""));
+    expect(out.verdict.failedChecks).toContain("well-known");
+    expect(out.verdict.failedChecks).toContain("challenge");
+    expect(stdout.buf.join("")).toContain("aborted");
+  });
+
   it("rejects an invalid service URL with EXIT_USAGE", async () => {
     const stdout = captureStream();
     const stderr = captureStream();

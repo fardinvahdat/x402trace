@@ -163,11 +163,14 @@ The headline of v0.3. Answers the question Discord operators are asking each oth
 # Default — Base Sepolia
 x402trace bazaar-check https://your-service.example/api/route
 
-# Mainnet (real funds in scope; banner printed)
-x402trace bazaar-check https://your-service.example/api/route --chain base --rpc-url https://your-mainnet-rpc
+# Mainnet discovery query (banner printed; still read-only)
+x402trace bazaar-check https://your-service.example/api/route --chain base
 
 # With a payer-hint (enables the self-payment guard)
 x402trace bazaar-check https://your-service.example/api/route --payer-hint 0xYourPayer
+
+# Shorten the per-request HTTP timeout for CI/smoke checks
+x402trace bazaar-check https://your-service.example/api/route --timeout-ms 5000
 ```
 
 Four read-only checks compose into a single bottom-line verdict:
@@ -188,6 +191,7 @@ Four read-only checks compose into a single bottom-line verdict:
 **Scope notes:**
 
 - Read-only. Never signs, never broadcasts.
+- Each HTTP probe has a 10s default timeout; use `--timeout-ms` to shorten it in CI or when checking flaky endpoints.
 - The opt-in paid-pass mode (`--with-wallet`) is **deferred to v0.3.1** — see [ADR-003](./DECISIONS.md). The static-analysis-only checks shipped here cover the dominant Discord pain (Bazaar indexing failure) without needing signing infrastructure.
 
 ### Chain selection (Base mainnet, v0.3+)
