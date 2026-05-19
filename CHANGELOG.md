@@ -38,11 +38,21 @@ The v0.3 release. Operator-side debugging cut: x402trace can now answer the ques
 - **SLA-breach observation event (X402-37)** — single Discord voice + schema-change risk failed the strict-bar; deferred until a 2nd named operator surfaces independently. Hikari is shipping Recourse as the enforcement product.
 - **ERC-6492 Smart Wallet support, reconciliation webhook/auto-retry, `extensions.diagnostic` decoder (gated on PR [#1875](https://github.com/x402-foundation/x402/pull/1875)), `tokenNameMismatchRule`, `repeatedNonceRule`, daemon mode, audit export, multi-chain (non-Base), hosted SaaS** — all listed in [ADR-003](./DECISIONS.md) with documented deferral reasons.
 
+### Fixed (X402-38 pre-publish audit, 2026-05-17)
+
+- **`validate --diff`: AbortController signal was never passed to fetch** — the timeout fired `controller.abort()` but the fetch call didn't receive the signal, so real-world timeouts would not actually cancel the request. Tests passed because the mock fetcher threw `AbortError` directly. **Fix:** `DiffFetcher` type extended with `signal?: AbortSignal`; signal now plumbed through. Two new regression tests assert the signal is received by the fetcher and reports `aborted=true` after the timeout window.
+- **Pre-existing flake at `tests/integration/demo-timeout-reconciliation.test.ts:114`** (50ms fixed sleep racing the engine event bus under parallel-test load). Hit CI twice in this session; would have intermittently broken the publish workflow's `prepublishOnly` step. **Fix:** replaced fixed sleep with a `pollFor` helper that retries up to 2s in 25ms steps. 5/5 consecutive runs pass post-fix.
+
 ### Notes
 
-- **278 → 408 tests** (+130 new across X402-31..36). One pre-existing flake in `tests/integration/demo-timeout-reconciliation.test.ts:114` (50ms `setTimeout` race under full-suite parallel load) hit once on X402-33's first run; passed on rerun. Pre-existing — not introduced by v0.3.
-- **Tarball size:** 74 files / 222 KB unpacked at v0.2.3 → **96 files / 335 KB unpacked at v0.3.0**. Well under the 400 KB CI guard cap.
+- **278 → 410 tests** (+132 new across X402-31..36 + audit). The pre-existing flake noted above is now deterministic.
+- **Tarball size:** 74 files / 222 KB unpacked at v0.2.3 → **96 files / ~337 KB unpacked at v0.3.0**. Well under the 400 KB CI guard cap.
 - **Runtime `dependencies` count unchanged** from v0.2.3 (4: `commander`, `dotenv`, `viem`, `x402`). No supply-chain expansion.
+- **Audit findings documented but NOT fixed in v0.3.0** (all low severity, none block release):
+  1. `cdpMinAmountRule` applies the same minimum across chains; the $0.001 was Discord-confirmed for Sepolia only. Mainnet minimum may differ. Rule fails-soft (suggests a higher amount); documented inline in [src/diagnose/rules.ts](./src/diagnose/rules.ts).
+  2. `validate --diff` silently overrides `--strict`. Documented in [src/cli/validate-command.ts](./src/cli/validate-command.ts).
+  3. `parseFacilitatorList` allows duplicate aliases (e.g. `--diff cdp,cdp`). Harmless but wasteful; documented.
+  4. `extractX402Versions` (the `versions` subcommand) accepts non-semver values (`workspace:*`, `github:foo/bar`). `match: "any"` known-skew entries can fire false-positives for monorepo users. Edge case; promote to a fix when a real user reports it.
 
 ## [0.2.3] — 2026-05-13
 

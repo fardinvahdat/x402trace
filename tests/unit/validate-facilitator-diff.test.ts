@@ -175,6 +175,40 @@ describe("callFacilitatorVerify", () => {
     expect(r.errorMessage).toMatch(/timeout/);
   });
 
+  it("passes signal to fetcher so the timeout can actually cancel the request (X402-38 audit bug)", async () => {
+    let observedSignal: AbortSignal | undefined;
+    const fetcher: DiffFetcher = async (_url, init) => {
+      observedSignal = init.signal;
+      return jsonResponse({ isValid: true });
+    };
+    await callFacilitatorVerify(FAC, { paymentPayload: {}, paymentRequirements: {} }, { fetcher });
+    expect(observedSignal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("signal aborts when the timeout fires before the fetcher resolves", async () => {
+    let observedSignal: AbortSignal | undefined;
+    const fetcher: DiffFetcher = (_url, init) => {
+      observedSignal = init.signal;
+      return new Promise<Response>(() => {
+        // never resolves; only the abort can break us out
+      });
+    };
+    // Race the call against the abort observation: spin off the call
+    // and assert that within a few ms after the timeout window, the
+    // signal observed by the fetcher reports aborted=true.
+    const call = callFacilitatorVerify(
+      FAC,
+      { paymentPayload: {}, paymentRequirements: {} },
+      { fetcher, timeoutMs: 10 },
+    );
+    // Give the timer one event-loop tick past the timeoutMs window.
+    await new Promise((r) => setTimeout(r, 25));
+    expect(observedSignal?.aborted).toBe(true);
+    // Don't await `call` — it's a never-resolving promise; just verify
+    // the abort fired. Real-life fetch would have rejected by now.
+    void call;
+  });
+
   it("normalizes headers to lowercase keys", async () => {
     const fetcher: DiffFetcher = async () =>
       jsonResponse({ isValid: true }, 200, { "EXTENSION-Responses": "bazaar=ok" });

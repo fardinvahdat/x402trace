@@ -318,7 +318,14 @@ export const assetAddressRule: DiagnosticRule = {
 const CDP_FACILITATOR_HOST = "cdp.coinbase.com";
 /** $0.001 USDC at 6 decimals — the documented CDP facilitator minimum.
  *  Surfaced by DukeOphir/Coinbase team in the Discord transcript after
- *  akiyama's multi-day chase of a generic `invalid_payload`. */
+ *  akiyama's multi-day chase of a generic `invalid_payload`.
+ *
+ *  **Known gap (X402-38 pre-publish audit, 2026-05-17):** the threshold
+ *  was Discord-confirmed for Base Sepolia. Mainnet has not been
+ *  explicitly confirmed by the Coinbase team; we apply the same minimum
+ *  on the conservative assumption that the facilitator's threshold is
+ *  global (not chain-specific). If a mainnet operator reports a
+ *  different minimum, split into per-chain values. */
 const CDP_MIN_AMOUNT_ATOMIC = 1000n;
 
 /**
