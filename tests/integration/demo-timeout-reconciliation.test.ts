@@ -25,6 +25,24 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { wrapFetchWithPayment } from "x402-fetch";
 import { createSigner } from "x402/types";
+
+/**
+ * Poll-until-truthy helper. Replaces fixed `setTimeout` sleeps that
+ * intermittently fired before the engine had drained its event bus
+ * under parallel-test CI load (the X402-38 audit flake).
+ */
+async function pollFor<T>(
+  fn: () => T | undefined,
+  opts: { totalMs: number; stepMs: number },
+): Promise<T | undefined> {
+  const deadline = Date.now() + opts.totalMs;
+  while (Date.now() < deadline) {
+    const v = fn();
+    if (v !== undefined) return v;
+    await new Promise((r) => setTimeout(r, opts.stepMs));
+  }
+  return fn();
+}
 import type { ChainTransfer } from "../../src/chain/types.js";
 import { createDecoder } from "../../src/decoder/index.js";
 import { createDogfoodApp } from "../../src/dogfood/app.js";
@@ -108,11 +126,19 @@ describe("X402-15 demo reproduction (hermetic)", () => {
     expect(res.status).toBe(502); // proxy upstream timeout
 
     // Let event-bus drain. The engine should now have one pending
-    // exchange (upstream_timeout outcome + payment payload).
-    await new Promise((r) => setTimeout(r, 50));
-    const pending = engine.pending();
-    expect(pending).toHaveLength(1);
-    const flagged = pending[0]!;
+    // exchange (upstream_timeout outcome + payment payload). Under
+    // parallel-test CI load, the 50ms fixed-sleep we used here
+    // intermittently fired before the engine had ingested the event;
+    // poll-until-populated up to 2s instead.
+    const pending = await pollFor(
+      () => {
+        const p = engine.pending();
+        return p.length === 1 ? p : undefined;
+      },
+      { totalMs: 2000, stepMs: 25 },
+    );
+    expect(pending).not.toBeUndefined();
+    const flagged = pending![0]!;
     expect(flagged.outcomeKind).toBe("upstream_timeout");
 
     // Now simulate what the live `subscribeUsdcTransfers` would emit

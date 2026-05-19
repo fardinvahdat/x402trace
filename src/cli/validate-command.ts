@@ -52,6 +52,11 @@ export interface ValidateCommandOptions {
    * When true, the "uncertain" overall status (key chain checks
    * skipped) exits 2 instead of 0. Default false — `uncertain` is a
    * warning, not a failure, since the user might have an RPC outage.
+   *
+   * **Note (X402-38 audit):** `--strict` only applies to the
+   * single-facilitator validate path. When `--diff` is also set, the
+   * diff path returns its own verdict (any_accepts / all_reject /
+   * all_timeout) and `--strict` has no effect on the exit code.
    */
   readonly strict?: boolean;
   /**
@@ -59,8 +64,9 @@ export interface ValidateCommandOptions {
    * facilitator aliases or full URLs (`cdp,xpay` or `https://...`).
    * When set, validate runs the same synthesised payload against each
    * facilitator's /verify endpoint and reports the drift instead of
-   * (or in addition to) the standard single-facilitator validate
-   * output.
+   * the standard single-facilitator validate output. The diff path
+   * has its own verdict + exit-code surface (see `runFacilitatorDiff`);
+   * `--strict` does not apply when `--diff` is set.
    */
   readonly diff?: string;
   /** Per-facilitator /verify timeout in ms. Default 10_000. */

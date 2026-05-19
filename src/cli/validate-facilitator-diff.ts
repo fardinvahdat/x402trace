@@ -126,7 +126,13 @@ export interface VerifyPayload {
 
 export type DiffFetcher = (
   url: string,
-  init: { method: string; headers: Record<string, string>; body: string },
+  init: {
+    method: string;
+    headers: Record<string, string>;
+    body: string;
+    /** AbortSignal from the per-call timeout. Real fetch honours it; tests may ignore. */
+    signal?: AbortSignal;
+  },
 ) => Promise<Response>;
 
 /**
@@ -159,6 +165,7 @@ export async function callFacilitatorVerify(
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
+      signal: controller.signal,
     });
     const headerMap: Record<string, string> = {};
     response.headers.forEach((value, key) => {
