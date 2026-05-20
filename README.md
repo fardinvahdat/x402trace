@@ -301,6 +301,14 @@ Personal project. PRs and bug reports welcome. Read in this order:
 2. [TESTING.md](./TESTING.md) — testing is a hard requirement, not a nice-to-have
 3. [CONTRIBUTING.md](./CONTRIBUTING.md) — branching + PR workflow
 
+## Donate
+
+If x402trace saved you time and you want to send something back, the maintainer accepts USDC or ETH on Base or Ethereum mainnet:
+
+**`0x180671C40c5e28Ba0cF88D57B761A8ccE97710De`**
+
+Verify on [Basescan](https://basescan.org/address/0x180671C40c5e28Ba0cF88D57B761A8ccE97710De) or [Etherscan](https://etherscan.io/address/0x180671C40c5e28Ba0cF88D57B761A8ccE97710De). All amounts welcome — donations fund maintainer time on the next release (currently: v0.3.2 metadata-propagation sub-checks per the [v0.3.1 release notes](https://github.com/fardinvahdat/x402trace/releases/tag/v0.3.1)).
+
 ## Acknowledgments
 
 External contributors who've shaped x402trace:
