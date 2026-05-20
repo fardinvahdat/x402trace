@@ -11,6 +11,31 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 —
 
+## [0.3.1] — 2026-05-20
+
+Hotfix release covering two `bazaar-check` bugs surfaced by external contributors within 72 hours of v0.3.0 ship, plus an npm-metadata fix from the v0.3.0 post-publish audit. No breaking changes — strictly additive.
+
+### Fixed
+
+- **`parseChallengeBody` false-fails on canonical x402 v2 challenge bodies** ([#65](https://github.com/fardinvahdat/x402trace/issues/65) → [#66](https://github.com/fardinvahdat/x402trace/pull/66), thanks @hypeprinter007-stack 🙏 — first external contributor). v0.3.0's `src/decoder/parse.ts` detected `x402Version` correctly but enforced v1 field names regardless, so v2-compliant bodies using the renamed `amount` field (instead of v1's `maxAmountRequired`) and lacking the v1 per-accept `resource` field failed with `challenge accepts[0].maxAmountRequired missing or wrong type`. v2 bodies are now normalized at parse time (`amount → maxAmountRequired` when only `amount` is present) and the per-accept `resource` requirement is dropped under v2 (resource lives top-level in v2). Error messages under v2 include the hint `(v2 field name: "amount")` so operators don't have to spec-dive. Surfaced against the real v2 service `api.anchor-x402.com`; e2e-verified to flip `bazaar-check` exit code from `2` (false-fail) to `0` (looks_correct).
+- **`bazaar-check` hung indefinitely on stalled HTTP probes** ([#67](https://github.com/fardinvahdat/x402trace/pull/67), thanks @peterxing 🙏). When a checked endpoint accepted the connection but never resolved — or sent headers but then stalled the body — the CLI hung until killed manually, breaking CI / automation use. Now wrapped with a **10s default per-probe timeout** via `AbortController`; configurable with `--timeout-ms` for CI / smoke runs / known-flaky endpoints. Body-read path keeps the timer active across `arrayBuffer` / `blob` / `formData` / `json` / `text` so headers-arrived-but-body-stalls is caught too. Upper bound validated against Node's `setTimeout` cap (`2_147_483_647`).
+
+### Changed
+
+- **`package.json` `description`** now reflects the v0.3 headline subcommands (was v0.2-era: `"x402 payment debugger for Base. Detects reconciliation failures, pre-flights wallets, explains 402s."`). Closes the audit gap discovered post-v0.3.0 publish where the npm-displayed package description didn't mention `bazaar-check`, `validate --diff`, or mainnet support. New audit-gate checklist item carried forward to v0.3.2+: _"package.json description and README headline list both reflect this version's user-facing features."_
+- **`src/cli/index.ts` `VERSION` constant** bumped 0.3.0 → 0.3.1.
+
+### Removed
+
+- **Stale `--rpc-url` example for `bazaar-check`** in the README. `bazaar-check` is HTTP-only and doesn't need an RPC URL (it uses the CDP discovery API for the indexing query); the example was misleading.
+
+### Notes
+
+- **Adoption signal.** Two distinct external contributors in 72 hours after v0.3.0 ship (@hypeprinter007-stack and @peterxing); both PRs merged within 12 hours of opening. Strongest "v0.3.0 found its audience" signal so far. Third independent positive signal in the same window: @TomSmart_ai (mapper operator) ran `bazaar-check` against 19 endpoints from his production catalog, 19/19 returned `implementation_issue` — first production-scale validation of the verdict taxonomy.
+- **Pitch-language update.** TomSmart_ai's framing — _"catches the listing-readiness gap"_ vs _"speaks x402 at all"_ (his strict-v2 sweep showed 88% protocol-valid on the same catalog) — is sharper than the prior README copy. Forward to v0.3.2+ surfaces.
+- **No breaking changes.** v0.3.0 → v0.3.1 is backward-compatible. v1 challenge bodies parse unchanged. Callers that don't pass `--timeout-ms` get the new 10s default; callers that need the old "wait forever" behaviour can pass `--timeout-ms 2147483647` (Node's timer max, the documented upper bound).
+- **Test count:** 410 in v0.3.0 → 415 in v0.3.1 (+2 from #66 v2 parse coverage, +3 from #67 timeout coverage). All existing tests pass unchanged.
+
 ## [0.3.0] — 2026-05-17
 
 The v0.3 release. Operator-side debugging cut: x402trace can now answer the question Discord operators are asking each other in real time — _"is my Bazaar / agentic.market integration correct, or is the bug upstream of me?"_ — in a 30-second command-line check. Same shipped binary contract as v0.2.x (no breaking changes to existing subcommands); two new subcommands; five new facilitator-aware diagnose rules; Base mainnet support behind an opt-in `--chain` flag; cross-facilitator drift detection on `validate`. Strict 6-stage audit gate ran on every ticket (X402-31..36).
