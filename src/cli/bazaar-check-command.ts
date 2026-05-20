@@ -16,6 +16,8 @@ import { parseChainOrUndefined } from "./chain-flag.js";
 import { createColorizer, type Colorizer } from "./color.js";
 import { EXIT_USAGE, type ExitCode } from "./exit-codes.js";
 
+const MAX_NODE_TIMEOUT_MS = 2_147_483_647;
+
 export interface BazaarCheckCommandOptions {
   readonly service?: string;
   readonly log?: LogFormat;
@@ -24,6 +26,8 @@ export interface BazaarCheckCommandOptions {
   readonly payerHint?: string;
   /** Override the CDP discovery base URL for tests / alternate facilitators. */
   readonly discoveryBaseUrl?: string;
+  /** Per-request timeout for bazaar-check HTTP probes. */
+  readonly timeoutMs?: number;
 }
 
 export interface BazaarCheckRunContext {
@@ -65,12 +69,28 @@ export async function runBazaarCheckCommand(
     else ctx.stderr.write(`${banner}\n`);
   }
 
+  const timeoutMs = opts.timeoutMs ?? 10_000;
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    ctx.stderr.write(
+      `error: --timeout-ms must be a positive number (got '${String(opts.timeoutMs)}')\n`,
+    );
+    return EXIT_USAGE;
+  }
+  if (timeoutMs > MAX_NODE_TIMEOUT_MS) {
+    ctx.stderr.write(
+      `error: --timeout-ms must be <= ${MAX_NODE_TIMEOUT_MS} (got '${String(opts.timeoutMs)}')\n`,
+    );
+    return EXIT_USAGE;
+  }
+
+  const fetcher = withRequestTimeout(ctx.fetcher ?? fetch, timeoutMs);
+
   const report = await runBazaarCheck({
     serviceUrl: service,
     chain: chainKey,
     ...(opts.payerHint !== undefined ? { payerHint: opts.payerHint } : {}),
     ...(opts.discoveryBaseUrl !== undefined ? { discoveryBaseUrl: opts.discoveryBaseUrl } : {}),
-    ...(ctx.fetcher !== undefined ? { fetcher: ctx.fetcher } : {}),
+    fetcher,
   });
 
   if (format === "json") {
@@ -80,6 +100,47 @@ export async function runBazaarCheckCommand(
   }
 
   return report.verdict.exitCode;
+}
+
+function withRequestTimeout(fetcher: typeof fetch, timeoutMs: number): typeof fetch {
+  return (async (input: Parameters<typeof fetch>[0], init?: RequestInit): Promise<Response> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetcher(input, { ...init, signal: controller.signal });
+      return withBodyTimeoutCleanup(response, timer);
+    } catch (err) {
+      clearTimeout(timer);
+      throw err;
+    }
+  }) as typeof fetch;
+}
+
+function withBodyTimeoutCleanup(response: Response, timer: NodeJS.Timeout): Response {
+  const clear = (): void => clearTimeout(timer);
+  const wrapBodyReader = <TArgs extends unknown[], TResult>(
+    read: (...args: TArgs) => Promise<TResult>,
+  ): ((...args: TArgs) => Promise<TResult>) => {
+    return async (...args: TArgs): Promise<TResult> => {
+      try {
+        return await read(...args);
+      } finally {
+        clear();
+      }
+    };
+  };
+
+  Object.defineProperty(response, "arrayBuffer", {
+    value: wrapBodyReader(response.arrayBuffer.bind(response)),
+  });
+  Object.defineProperty(response, "blob", { value: wrapBodyReader(response.blob.bind(response)) });
+  Object.defineProperty(response, "formData", {
+    value: wrapBodyReader(response.formData.bind(response)),
+  });
+  Object.defineProperty(response, "json", { value: wrapBodyReader(response.json.bind(response)) });
+  Object.defineProperty(response, "text", { value: wrapBodyReader(response.text.bind(response)) });
+  if (response.body === null) clear();
+  return response;
 }
 
 function formatReportHuman(report: BazaarReport, color: Colorizer): string {
