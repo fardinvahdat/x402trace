@@ -301,6 +301,16 @@ Personal project. PRs and bug reports welcome. Read in this order:
 2. [TESTING.md](./TESTING.md) — testing is a hard requirement, not a nice-to-have
 3. [CONTRIBUTING.md](./CONTRIBUTING.md) — branching + PR workflow
 
+## Acknowledgments
+
+External contributors who've shaped x402trace:
+
+- [@hypeprinter007-stack](https://github.com/hypeprinter007-stack) — first external contributor; fixed v2 challenge body parsing ([#65](https://github.com/fardinvahdat/x402trace/issues/65), [#66](https://github.com/fardinvahdat/x402trace/pull/66))
+- [@peterxing](https://github.com/peterxing) — `bazaar-check` HTTP probe timeouts ([#67](https://github.com/fardinvahdat/x402trace/pull/67))
+- [@TomSmart_ai](https://github.com/TomSmart_ai) — first production-scale validation against a 19-endpoint mapper catalog (Coinbase Developer Discord, 2026-05-20); coined the "listing-readiness gap" framing for `bazaar-check`
+
+Per-release credit lives in the [CHANGELOG](./CHANGELOG.md).
+
 ## License
 
 [Apache 2.0](./LICENSE)
