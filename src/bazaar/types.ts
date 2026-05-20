@@ -87,6 +87,14 @@ export interface WellKnownManifest {
   readonly description?: string;
   readonly accepts?: readonly unknown[];
   readonly extensions?: Record<string, unknown>;
+  /**
+   * Operator-declared discovery extension opt-in. When set to `"bazaar"`,
+   * `extensions.bazaar.{name, description}` are mandatory and validated
+   * here. Declared empty / absent means bazaar listing is not opted in
+   * and the extension fields are not required (manifest still validated
+   * for top-level name/description).
+   */
+  readonly discovery_extension?: string;
 }
 
 /**
