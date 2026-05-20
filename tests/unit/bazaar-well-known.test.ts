@@ -96,4 +96,84 @@ describe("checkWellKnown", () => {
     expect(result.status).toBe("fail");
     expect(result.message).toMatch(/DNS lookup failed/);
   });
+
+  // ---- #65 finding 2: extensions.bazaar manifest hygiene ----
+  //
+  // Issue: operators populate `extensions.bazaar` with empty strings (or
+  // an empty object), the manifest passes JSON schema, the crawler reads
+  // empty values, and the listing renders as a blank card. The challenge
+  // body got this check in v0.3.0; the manifest didn't, even though the
+  // mapper actually reads listing metadata from the manifest, not the
+  // challenge. Real cases: Max + Zev (surfaced by hypeprinter007-stack).
+
+  it("passes when extensions.bazaar is populated", async () => {
+    const fetcher = mockFetch(() =>
+      jsonResponse({
+        name: "X",
+        description: "Y",
+        extensions: { bazaar: { name: "X API", description: "Does X" } },
+      }),
+    );
+    const { result } = await checkWellKnown(SERVICE, fetcher);
+    expect(result.status).toBe("pass");
+    expect(result.message).toMatch(/extensions\.bazaar populated/);
+  });
+
+  it("fails when extensions.bazaar is present but name is empty string", async () => {
+    const fetcher = mockFetch(() =>
+      jsonResponse({
+        name: "X",
+        description: "Y",
+        extensions: { bazaar: { name: "", description: "ok" } },
+      }),
+    );
+    const { result } = await checkWellKnown(SERVICE, fetcher);
+    expect(result.status).toBe("fail");
+    expect(result.message).toMatch(/extensions\.bazaar\.name/);
+  });
+
+  it("fails when extensions.bazaar.description is whitespace-only", async () => {
+    const fetcher = mockFetch(() =>
+      jsonResponse({
+        name: "X",
+        description: "Y",
+        extensions: { bazaar: { name: "X API", description: "   " } },
+      }),
+    );
+    const { result } = await checkWellKnown(SERVICE, fetcher);
+    expect(result.status).toBe("fail");
+    expect(result.message).toMatch(/extensions\.bazaar\.description/);
+  });
+
+  it("fails when extensions.bazaar is an empty object", async () => {
+    const fetcher = mockFetch(() =>
+      jsonResponse({ name: "X", description: "Y", extensions: { bazaar: {} } }),
+    );
+    const { result } = await checkWellKnown(SERVICE, fetcher);
+    expect(result.status).toBe("fail");
+    // Both fields missing — both should be reported, not just the first.
+    expect(result.detail?.issues).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/extensions\.bazaar\.name/),
+        expect.stringMatching(/extensions\.bazaar\.description/),
+      ]),
+    );
+  });
+
+  it("fails when discovery_extension: bazaar is declared but extensions.bazaar is absent", async () => {
+    const fetcher = mockFetch(() =>
+      jsonResponse({ name: "X", description: "Y", discovery_extension: "bazaar" }),
+    );
+    const { result } = await checkWellKnown(SERVICE, fetcher);
+    expect(result.status).toBe("fail");
+    expect(result.message).toMatch(/extensions\.bazaar/);
+  });
+
+  it("does not require extensions.bazaar when operator has not opted in", async () => {
+    // No discovery_extension, no extensions.bazaar — operator simply
+    // hasn't opted into bazaar discovery. Top-level fields are enough.
+    const fetcher = mockFetch(() => jsonResponse({ name: "X", description: "Y" }));
+    const { result } = await checkWellKnown(SERVICE, fetcher);
+    expect(result.status).toBe("pass");
+  });
 });
