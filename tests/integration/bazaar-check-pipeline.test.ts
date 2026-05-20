@@ -237,6 +237,61 @@ describe("bazaar-check pipeline (hermetic)", () => {
     expect(stdout.buf.join("")).toContain("aborted");
   });
 
+  it("keeps the timeout active while reading a stalled response body", async () => {
+    const stdout = captureStream();
+    const stderr = captureStream();
+    const stalledBodyFetcher = ((urlInput: string, init?: RequestInit) => {
+      const url = String(urlInput);
+      if (url.endsWith("/.well-known/x402")) {
+        const body = new ReadableStream({
+          start(controller) {
+            init?.signal?.addEventListener(
+              "abort",
+              () => controller.error(new Error("body aborted")),
+              { once: true },
+            );
+          },
+        });
+        return Promise.resolve(
+          new Response(body, { status: 200, headers: { "content-type": "application/json" } }),
+        );
+      }
+      return buildFetcher()(urlInput, init);
+    }) as typeof fetch;
+
+    const startedAt = Date.now();
+    const code = await runBazaarCheckCommand(
+      { service: SERVICE, log: "json", chain: "base-sepolia", timeoutMs: 5 },
+      {
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+        env: {},
+        fetcher: stalledBodyFetcher,
+      },
+    );
+
+    expect(Date.now() - startedAt).toBeLessThan(1_000);
+    expect(code).toBe(2);
+    const out = JSON.parse(stdout.buf.join(""));
+    expect(out.verdict.failedChecks).toContain("well-known");
+  });
+
+  it("rejects timeout values above Node's timer maximum", async () => {
+    const stdout = captureStream();
+    const stderr = captureStream();
+    const code = await runBazaarCheckCommand(
+      { service: SERVICE, chain: "base-sepolia", timeoutMs: 2_147_483_648 },
+      {
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+        env: {},
+        fetcher: buildFetcher(),
+      },
+    );
+    expect(code).toBe(1);
+    expect(stderr.buf.join("")).toContain("2147483647");
+  });
+
   it("rejects an invalid service URL with EXIT_USAGE", async () => {
     const stdout = captureStream();
     const stderr = captureStream();

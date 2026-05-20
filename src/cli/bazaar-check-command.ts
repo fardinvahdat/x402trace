@@ -16,6 +16,8 @@ import { parseChainOrUndefined } from "./chain-flag.js";
 import { createColorizer, type Colorizer } from "./color.js";
 import { EXIT_USAGE, type ExitCode } from "./exit-codes.js";
 
+const MAX_NODE_TIMEOUT_MS = 2_147_483_647;
+
 export interface BazaarCheckCommandOptions {
   readonly service?: string;
   readonly log?: LogFormat;
@@ -74,6 +76,12 @@ export async function runBazaarCheckCommand(
     );
     return EXIT_USAGE;
   }
+  if (timeoutMs > MAX_NODE_TIMEOUT_MS) {
+    ctx.stderr.write(
+      `error: --timeout-ms must be <= ${MAX_NODE_TIMEOUT_MS} (got '${String(opts.timeoutMs)}')\n`,
+    );
+    return EXIT_USAGE;
+  }
 
   const fetcher = withRequestTimeout(ctx.fetcher ?? fetch, timeoutMs);
 
@@ -99,11 +107,40 @@ function withRequestTimeout(fetcher: typeof fetch, timeoutMs: number): typeof fe
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      return await fetcher(input, { ...init, signal: controller.signal });
-    } finally {
+      const response = await fetcher(input, { ...init, signal: controller.signal });
+      return withBodyTimeoutCleanup(response, timer);
+    } catch (err) {
       clearTimeout(timer);
+      throw err;
     }
   }) as typeof fetch;
+}
+
+function withBodyTimeoutCleanup(response: Response, timer: NodeJS.Timeout): Response {
+  const clear = (): void => clearTimeout(timer);
+  const wrapBodyReader = <TArgs extends unknown[], TResult>(
+    read: (...args: TArgs) => Promise<TResult>,
+  ): ((...args: TArgs) => Promise<TResult>) => {
+    return async (...args: TArgs): Promise<TResult> => {
+      try {
+        return await read(...args);
+      } finally {
+        clear();
+      }
+    };
+  };
+
+  Object.defineProperty(response, "arrayBuffer", {
+    value: wrapBodyReader(response.arrayBuffer.bind(response)),
+  });
+  Object.defineProperty(response, "blob", { value: wrapBodyReader(response.blob.bind(response)) });
+  Object.defineProperty(response, "formData", {
+    value: wrapBodyReader(response.formData.bind(response)),
+  });
+  Object.defineProperty(response, "json", { value: wrapBodyReader(response.json.bind(response)) });
+  Object.defineProperty(response, "text", { value: wrapBodyReader(response.text.bind(response)) });
+  if (response.body === null) clear();
+  return response;
 }
 
 function formatReportHuman(report: BazaarReport, color: Colorizer): string {
