@@ -138,6 +138,62 @@ describe("parseChallengeBody", () => {
     expect(result.value.requirements.scheme).toBe("exact");
   });
 
+  // Canonical v2 wire shape: `amount` instead of v1's `maxAmountRequired`,
+  // and `resource` lives on the top-level PaymentRequired (not per-accept).
+  // Repro of the v0.3.0 bug surfaced against api.anchor-x402.com:
+  // header-injected v2 body from the x402 Python SDK middleware.
+  it("parses a v2 challenge body with canonical v2 field names (amount, no per-accept resource)", () => {
+    const body = JSON.stringify({
+      x402Version: 2,
+      error: "Payment required",
+      resource: {
+        url: "https://api.example.com/v1/anchor",
+        description: "test endpoint",
+        mimeType: "",
+      },
+      accepts: [
+        {
+          scheme: "exact",
+          network: "eip155:8453",
+          asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          amount: "5000",
+          payTo: "0x1111111111111111111111111111111111111111",
+          maxTimeoutSeconds: 300,
+          extra: { name: "USD Coin", version: "2" },
+        },
+      ],
+    });
+    const result = parseChallengeBody(body);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.x402Version).toBe(2);
+    // After parsing, v2's `amount` is normalized to `maxAmountRequired`
+    // so downstream consumers see a unified shape.
+    expect(result.value.requirements.maxAmountRequired).toBe("5000");
+    expect(result.value.requirements.scheme).toBe("exact");
+    expect(result.value.requirements.network).toBe("eip155:8453");
+    expect(result.value.requirements.asset).toBe("0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913");
+  });
+
+  it("rejects a v2 challenge body missing both `amount` and `maxAmountRequired`", () => {
+    const body = JSON.stringify({
+      x402Version: 2,
+      accepts: [
+        {
+          scheme: "exact",
+          network: "eip155:8453",
+          asset: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+          payTo: "0x1111111111111111111111111111111111111111",
+        },
+      ],
+    });
+    const result = parseChallengeBody(body);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    // Error message should hint at the v2 spelling for ergonomics.
+    expect(result.message).toMatch(/amount/);
+  });
+
   it("rejects non-JSON body", () => {
     const result = parseChallengeBody("not json");
     expect(result.ok).toBe(false);
