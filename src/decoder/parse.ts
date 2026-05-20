@@ -116,7 +116,11 @@ export function parseChallengeBody(
   // decoder/format) keep working without per-field branches. The resource
   // field is dropped from required-keys in v2 because the canonical v2 spec
   // doesn't carry it per-accept.
-  if (x402Version === 2 && typeof r.amount === "string" && typeof r.maxAmountRequired !== "string") {
+  if (
+    x402Version === 2 &&
+    typeof r.amount === "string" &&
+    typeof r.maxAmountRequired !== "string"
+  ) {
     r.maxAmountRequired = r.amount;
   }
   const requiredKeys =
@@ -125,7 +129,8 @@ export function parseChallengeBody(
       : ["scheme", "network", "maxAmountRequired", "resource", "payTo", "asset"];
   for (const k of requiredKeys) {
     if (typeof r[k] !== "string") {
-      const hint = k === "maxAmountRequired" && x402Version === 2 ? ` (v2 field name: "amount")` : "";
+      const hint =
+        k === "maxAmountRequired" && x402Version === 2 ? ` (v2 field name: "amount")` : "";
       return { ok: false, message: `challenge accepts[0].${k}${hint} missing or wrong type` };
     }
   }
