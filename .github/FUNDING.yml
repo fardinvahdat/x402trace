@@ -1,0 +1,3 @@
+# x402trace donate address — USDC or ETH on Base / Ethereum mainnet.
+# Same address resolves on both chains; see README's Donate section.
+custom: ["https://basescan.org/address/0x180671C40c5e28Ba0cF88D57B761A8ccE97710De"]
