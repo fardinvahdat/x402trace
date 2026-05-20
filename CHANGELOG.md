@@ -216,7 +216,8 @@ The v0.1 wedge: a local proxy + timeout-reconciliation engine that catches the c
 
 ---
 
-[Unreleased]: https://github.com/fardinvahdat/x402trace/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/fardinvahdat/x402trace/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.3.1
 [0.3.0]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.3.0
 [0.2.3]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.2.3
 [0.2.2]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.2.2

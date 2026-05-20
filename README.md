@@ -192,7 +192,7 @@ Four read-only checks compose into a single bottom-line verdict:
 
 - Read-only. Never signs, never broadcasts.
 - Each HTTP probe has a 10s default timeout; use `--timeout-ms` to shorten it in CI or when checking flaky endpoints.
-- The opt-in paid-pass mode (`--with-wallet`) is **deferred to v0.3.1** — see [ADR-003](./DECISIONS.md). The static-analysis-only checks shipped here cover the dominant Discord pain (Bazaar indexing failure) without needing signing infrastructure.
+- The opt-in paid-pass mode (`--with-wallet`) is **deferred** — see [ADR-003](./DECISIONS.md). The static-analysis-only checks shipped here cover the dominant Discord pain (Bazaar indexing failure) without needing signing infrastructure.
 
 ### Chain selection (Base mainnet, v0.3+)
 
@@ -265,16 +265,19 @@ Save the captured 402 (proxy does this automatically) and run `x402trace explain
 Yes — `x402trace validate <wallet> <service-url>` is read-only. It fetches the 402, queries chain state (USDC balance, EIP-3009 nonce, wallet kind), runs the same rules `explain` uses. Exits `0` if would-succeed, `2` if would-fail.
 
 **Q: Does this work on mainnet?**
-Not yet — v0.2 is Base Sepolia only per [ADR-002](./DECISIONS.md#adr-002-v02-feature-pick--validate-primary--explain-paired). Mainnet support is on the v0.3 stretch list, gated on ≥1 week of clean testnet traffic.
+Yes — Base mainnet shipped in v0.3.0 per [ADR-003](./DECISIONS.md#adr-003-v03-feature-pick--bazaar-check-headline--5-facilitator-aware-diagnose-rules--validate---diff--base-mainnet-autonomous-execution-under-strict-6-stage-audit-gate). Pass `--chain base` (or set `BASE_CHAIN_ID=base`) to switch. You must supply your own mainnet RPC URL via `--rpc-url` or `BASE_RPC_URL` env — x402trace ships no default mainnet endpoint (CLAUDE.md hard rule #2). Default stays `base-sepolia` for backward compatibility. See [Chain selection (Base mainnet, v0.3+)](#chain-selection-base-mainnet-v03) above for examples and safety notes.
 
 **Q: My supply-chain scanner shows transitive alerts on dependencies. Are these in x402trace?**
-No. As of v0.2.3 the runtime tree is `commander` + `dotenv` + `viem` + `x402` only — the published `dist/` imports nothing else. The test-tooling deps (`hono`, `x402-fetch`, `x402-hono`) are `devDependencies` and are not installed by `npm i x402trace`. Any wallet-SDK / WalletConnect / MetaMask transitives a scanner shows on the package come in via `viem` (read-only chain client). See [SECURITY.md](./SECURITY.md) to report a vulnerability in x402trace itself.
+No. As of v0.3.1 the runtime tree is `commander` + `dotenv` + `viem` + `x402` only — the published `dist/` imports nothing else. The test-tooling deps (`hono`, `x402-fetch`, `x402-hono`) are `devDependencies` and are not installed by `npm i x402trace`. Any wallet-SDK / WalletConnect / MetaMask transitives a scanner shows on the package come in via `viem` (read-only chain client). See [SECURITY.md](./SECURITY.md) to report a vulnerability in x402trace itself.
 
 ## Roadmap
 
 - **v0.1.0** (2026-05-12) — local proxy + timeout reconciliation. [ADR-001](./DECISIONS.md#adr-001-v01-wedge).
-- **v0.2** (current) — `validate` + `explain` on a shared diagnostic rule engine. [ADR-002](./DECISIONS.md#adr-002-v02-feature-pick--validate-primary--explain-paired).
-- **v0.3 stretch** — mainnet, ERC-6492 wallet kind, `--diff` cross-facilitator, `bazaar-check`, SDK-skew `versions` audit, `--watch` daemon, reconciliation actions (webhook / auto-retry). Full list: [SPEC.md § 5](./SPEC.md#5-v02-scope-picked-in-adr-002).
+- **v0.2.0 — v0.2.3** (2026-05-12 → 2026-05-13) — `validate` + `explain` on a shared diagnostic rule engine. [ADR-002](./DECISIONS.md#adr-002-v02-feature-pick--validate-primary--explain-paired).
+- **v0.3.0** (2026-05-17) — `bazaar-check` (headline), `validate --diff` cross-facilitator, 5 facilitator-aware diagnose rules, Base mainnet support, `versions` SDK-skew audit. [ADR-003](./DECISIONS.md#adr-003-v03-feature-pick--bazaar-check-headline--5-facilitator-aware-diagnose-rules--validate---diff--base-mainnet-autonomous-execution-under-strict-6-stage-audit-gate).
+- **v0.3.1** (current, 2026-05-20) — hotfix: v2 challenge body parsing ([#66](https://github.com/fardinvahdat/x402trace/pull/66) by @hypeprinter007-stack — first external contributor), `bazaar-check` HTTP probe timeouts ([#67](https://github.com/fardinvahdat/x402trace/pull/67) by @peterxing), npm package description audit-gap fix.
+- **v0.3.2** (planned) — metadata-propagation sub-checks for `bazaar-check`: D.1 manifest hygiene (empty-string detection), D.2 propagation diff (manifest vs indexer render), D.3 indexer-state probe (catches stuck `processing` records). Candidate: `facilitator-status` if a 2nd CDP outage cluster lands.
+- **Deferred (kept, not killed)** — ERC-6492 Smart Wallet kind, `extensions.diagnostic` decoder (gated on [#1875](https://github.com/x402-foundation/x402/pull/1875)), `--watch` daemon, reconciliation actions (webhook / auto-retry), hosted SaaS, multi-chain non-Base, `bazaar-check --with-wallet` paid-pass mode. See [SPEC.md § 5b "v0.3.2+ deferred"](./SPEC.md).
 
 ## How x402trace compares
 

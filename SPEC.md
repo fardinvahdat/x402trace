@@ -80,7 +80,7 @@ New module `src/diagnose/` holds the rule engine; both subcommands are thin wrap
 - **`x402trace versions <service-url>`** — SDK-skew audit. Reads local `package.json`, queries service 402 for version hints, prints a compatibility matrix against a known-skew table.
 - **SLA-breach observation event** in proxy JSONL — new `service.sla_breach` discriminant when upstream response time > threshold or non-2xx after `/settle`. Requires ADR-004 for the event-shape change. No enforcement, no bonds (that's [Recourse's](https://recourse-three.vercel.app/) domain).
 
-### v0.3.1+ deferred (kept, not killed)
+### v0.3.2+ deferred (kept, not killed)
 
 - ERC-6492 Smart Wallet support in `validate` — zero Discord voices today; build when the first user reports a wrong-answer bug.
 - `extensions.diagnostic` decoder ([#1875](https://github.com/x402-foundation/x402/pull/1875)) — gated on upstream merge.
