@@ -1,0 +1,107 @@
+{
+  "source": {
+    "contributor": "TomSmart_ai",
+    "context": "Coinbase Developer Discord #x402, 2026-05-20",
+    "methodology": "20 endpoints sampled from production mapper catalog (10 freshest, 5 CDP-sourced, 5 with on-chain payment volume); one skipped as obvious crawler junk so 19 actually probed",
+    "tool_version": "0.3.0",
+    "captured_at": "2026-05-20",
+    "summary": "19 of 19 returned implementation_issue against v0.3.0 bazaar-check; first production-scale validation of the verdict taxonomy"
+  },
+  "fixtures": [
+    {
+      "url": "https://api.crushrewards.dev/",
+      "expected_verdict_at_capture": "implementation_issue",
+      "notes": null
+    },
+    {
+      "url": "https://stableemail.dev/",
+      "expected_verdict_at_capture": "implementation_issue",
+      "notes": "StableEmail — pay-per-send email delivery service"
+    },
+    {
+      "url": "https://agentcash.minerva.io/",
+      "expected_verdict_at_capture": "implementation_issue",
+      "notes": "Minerva API — pay-per-request identity resolution / enrichment"
+    },
+    {
+      "url": "https://api.purch.xyz/",
+      "expected_verdict_at_capture": "implementation_issue",
+      "notes": "Purch — Amazon/Shopify search-and-buy + Purch Vault skills"
+    },
+    {
+      "url": "https://x402.onchainexpat.com/",
+      "expected_verdict_at_capture": "implementation_issue",
+      "notes": "OnchainExpat x402 APIs — uncensored AI, crypto tools, proxy"
+    },
+    {
+      "url": "https://twitter.surf.cascade.fyi/",
+      "expected_verdict_at_capture": "implementation_issue",
+      "notes": null
+    },
+    {
+      "url": "https://www.book-bot.app/",
+      "expected_verdict_at_capture": "implementation_issue",
+      "notes": null
+    },
+    {
+      "url": "https://stablegift.dev/",
+      "expected_verdict_at_capture": "implementation_issue",
+      "notes": null
+    },
+    {
+      "url": "https://x402.twit.sh/",
+      "expected_verdict_at_capture": "implementation_issue",
+      "notes": null
+    },
+    {
+      "url": "https://polyodds.bet/api/x402/resources/top-signals",
+      "expected_verdict_at_capture": "implementation_issue",
+      "notes": "Same URL Max was debugging in #x402 — useful cross-evidence for D.3 indexer-state probe (his settle reached CDP and got bazaar.status: processing, but Seller Tools shows {bazaar:{}})"
+    },
+    {
+      "url": "https://agentic.market/services/financial-analyst-ai",
+      "expected_verdict_at_capture": "implementation_issue",
+      "notes": "agentic.market listing page itself, not the underlying service"
+    },
+    {
+      "url": "https://audit.crestsystems.ai/",
+      "expected_verdict_at_capture": "implementation_issue",
+      "notes": null
+    },
+    {
+      "url": "https://mcp.usdtbanlist.com/",
+      "expected_verdict_at_capture": "implementation_issue",
+      "notes": "MCP endpoint variant — useful for testing bazaar-check against MCP-shaped services"
+    },
+    {
+      "url": "https://data.crestsystems.ai/bazaar/live",
+      "expected_verdict_at_capture": "implementation_issue",
+      "notes": null
+    },
+    {
+      "url": "https://lowpaymentfee.com/api/v1/orders/39/status",
+      "expected_verdict_at_capture": "implementation_issue",
+      "notes": "lowpaymentfee.com cluster — suspicious path patterns; do not reuse as canonical example without re-verification"
+    },
+    {
+      "url": "https://lowpaymentfee.com/api/v1/stripe/invoices/95",
+      "expected_verdict_at_capture": "implementation_issue",
+      "notes": "lowpaymentfee.com cluster — suspicious path patterns; do not reuse as canonical example without re-verification"
+    },
+    {
+      "url": "https://lowpaymentfee.com/api/v1/employees/177/ssn",
+      "expected_verdict_at_capture": "implementation_issue",
+      "notes": "lowpaymentfee.com cluster — SSN in URL path is a red flag; possibly a honeypot or test endpoint; do not reuse as canonical example without re-verification"
+    },
+    {
+      "url": "https://lowpaymentfee.com/api/v1/medical/records/90",
+      "expected_verdict_at_capture": "implementation_issue",
+      "notes": "lowpaymentfee.com cluster — medical records in URL path is a red flag; do not reuse as canonical example without re-verification"
+    },
+    {
+      "url": "https://lowpaymentfee.com/api/v1/nfts/18",
+      "expected_verdict_at_capture": "implementation_issue",
+      "notes": "lowpaymentfee.com cluster — see related entries; do not reuse without re-verification"
+    }
+  ]
+}
