@@ -12,6 +12,13 @@
  *   - Top-level `name` (string, non-empty) is present.
  *   - Top-level `description` (string, non-empty) is present.
  *   - `accepts` (array, optional) — if present, each entry is an object.
+ *   - `extensions.bazaar.{name, description}` (string, non-empty) when
+ *     bazaar discovery is opted into — either via `discovery_extension:
+ *     "bazaar"` or by including `extensions.bazaar` at all. Empty string
+ *     and whitespace-only are treated as missing: the mapper's listing
+ *     UI renders them as blank cards, which is the failure mode that
+ *     keeps reaching Discord (TheRoosters, GM, and the Max/Zev case
+ *     surfaced by hypeprinter007-stack in #65 finding 2).
  *
  * Intentionally lenient on the rest of the spec. The schema is actively
  * evolving (per ADR-003 risk register); strict validation would
@@ -112,13 +119,30 @@ export async function checkWellKnown(
     issues.push("`accepts` field is present but not an array");
   }
 
+  const bazaarExt = readBazaarExtension(manifest);
+  const declaresBazaar = manifest.discovery_extension === "bazaar";
+  if (declaresBazaar || bazaarExt !== undefined) {
+    if (bazaarExt === undefined) {
+      issues.push(
+        '`discovery_extension: "bazaar"` declared but `extensions.bazaar` is missing or not an object',
+      );
+    } else {
+      if (typeof bazaarExt.name !== "string" || bazaarExt.name.trim() === "") {
+        issues.push("missing or empty `extensions.bazaar.name` field");
+      }
+      if (typeof bazaarExt.description !== "string" || bazaarExt.description.trim() === "") {
+        issues.push("missing or empty `extensions.bazaar.description` field");
+      }
+    }
+  }
+
   if (issues.length > 0) {
     return {
       result: {
         check: "well-known",
         status: "fail",
         message: `manifest at ${url} has ${issues.length} issue(s): ${issues.join(", ")}`,
-        fix: `fix each: every Bazaar-listable service needs a top-level name (string), description (string), and accepts (array of payment requirement objects). The listing UI falls back to the raw URL when these are missing.`,
+        fix: `fix each: every Bazaar-listable service needs a top-level name (string), description (string), and accepts (array of payment requirement objects). Services opted into bazaar discovery (extensions.bazaar present, or discovery_extension: "bazaar") additionally need extensions.bazaar.{name, description} as non-empty strings — empty strings render as blank listing cards on the mapper.`,
         detail: { issues },
       },
       manifest,
@@ -129,8 +153,27 @@ export async function checkWellKnown(
     result: {
       check: "well-known",
       status: "pass",
-      message: `manifest at ${url} is well-formed (name="${manifest.name}", description set, accepts ${Array.isArray(manifest.accepts) ? `[${manifest.accepts.length}]` : "absent"})`,
+      message: `manifest at ${url} is well-formed (name="${manifest.name}", description set, accepts ${Array.isArray(manifest.accepts) ? `[${manifest.accepts.length}]` : "absent"}${bazaarExt ? `, extensions.bazaar populated` : ""})`,
     },
     manifest,
   };
+}
+
+/**
+ * Read `manifest.extensions.bazaar` if it is present and shaped as an
+ * object. Returns `undefined` when absent, null, or a non-object — those
+ * cases are handled by the caller's opt-in branch.
+ */
+function readBazaarExtension(
+  manifest: WellKnownManifest,
+): { name?: unknown; description?: unknown } | undefined {
+  const ext = manifest.extensions;
+  if (typeof ext !== "object" || ext === null) {
+    return undefined;
+  }
+  const bazaar = (ext as Record<string, unknown>)["bazaar"];
+  if (typeof bazaar !== "object" || bazaar === null) {
+    return undefined;
+  }
+  return bazaar as { name?: unknown; description?: unknown };
 }
