@@ -8,16 +8,22 @@
  *   - Body parses as JSON.
  *   - `accepts[0]` exists and decodes as `PaymentRequirements`.
  *   - `extensions.bazaar` is present (when caller signals
- *     `expectBazaar: true`) and has `name` + `description` strings.
+ *     `expectBazaar: true`) and conforms to its detected variant —
+ *     either the MCP-style (`name` + `description`) or Body-style
+ *     (`info.input` + `info.output` + `schema`) discovery extension
+ *     shape per `@x402/extensions@2.11.0`. See
+ *     [extensions-bazaar.ts](./extensions-bazaar.ts) for the variant rules
+ *     and ADR-004 for the design.
  *
  * Why bazaar metadata matters: the listing UI on agentic.market shows
- * `extensions.bazaar.name` and `extensions.bazaar.description` per
- * route. Without them, the listing falls back to raw URLs (TheRoosters,
- * GM in Discord transcript). With them mangled, the listing looks
- * unprofessional and operators have to file support tickets to fix.
+ * `extensions.bazaar.name` / `description` (MCP variant) or surfaces
+ * `info.input/output/schema` (Body variant) per route. Without them,
+ * the listing falls back to raw URLs or fails to render at all
+ * (TheRoosters, GM, AsaiShota, 0xdespot all hit this in v0.3.0/0.3.1).
  */
 
 import { parseChallengeBody } from "../decoder/parse.js";
+import { detectBazaarVariant, validateBazaarExtension } from "./extensions-bazaar.js";
 import type { CheckResult, ChallengeFetchResult } from "./types.js";
 
 export interface ChallengeFetchOptions {
@@ -132,32 +138,58 @@ export function checkChallenge(
       fix: `populate extensions.bazaar = { name: "Your service", description: "What it does" }. Without this, agentic.market falls back to raw URLs.`,
     };
   }
-  const bazaarObj = bazaar as Record<string, unknown>;
-  const missing: string[] = [];
-  if (typeof bazaarObj["name"] !== "string" || (bazaarObj["name"] as string).trim() === "") {
-    missing.push("name");
+  const validation = validateBazaarExtension(bazaar);
+  if (validation.variant === "unknown") {
+    // Defensive — variant detection couldn't classify the shape (future
+    // @x402/extensions variants land here). Skip validation, pass with
+    // an info-style message. Caller upstream already screened for
+    // non-object so this branch is unreachable from production today;
+    // kept for forward-compat per ADR-004 risk register.
+    return {
+      check: "challenge",
+      status: "pass",
+      message: `${serviceUrl}: extensions.bazaar variant not recognised; skipping shape validation`,
+    };
   }
-  if (
-    typeof bazaarObj["description"] !== "string" ||
-    (bazaarObj["description"] as string).trim() === ""
-  ) {
-    missing.push("description");
-  }
-  if (missing.length > 0) {
+  if (!validation.ok) {
+    if (validation.variant === "mcp-discovery") {
+      return {
+        check: "challenge",
+        status: "fail",
+        message: `${serviceUrl}: extensions.bazaar is missing required fields: ${validation.missing.join(", ")}`,
+        fix: `every Bazaar listing needs extensions.bazaar.name (string, non-empty) and extensions.bazaar.description (string, non-empty). TheRoosters + GM in Discord hit this — fix it and the listing renders correctly.`,
+        detail: { missingFields: validation.missing, variant: validation.variant },
+      };
+    }
+    // body-discovery variant
     return {
       check: "challenge",
       status: "fail",
-      message: `${serviceUrl}: extensions.bazaar is missing required fields: ${missing.join(", ")}`,
-      fix: `every Bazaar listing needs extensions.bazaar.name (string, non-empty) and extensions.bazaar.description (string, non-empty). TheRoosters + GM in Discord hit this — fix it and the listing renders correctly.`,
-      detail: { missingFields: missing },
+      message: `${serviceUrl}: extensions.bazaar (body-discovery variant) is missing required fields: ${validation.missing.join(", ")}`,
+      fix: `body-discovery services need extensions.bazaar.info.input, extensions.bazaar.info.output, and extensions.bazaar.schema (each a non-null object). See @x402/extensions@2.11.0 declareDiscoveryExtension(...).`,
+      detail: { missingFields: validation.missing, variant: validation.variant },
     };
   }
+  if (validation.variant === "body-discovery") {
+    return {
+      check: "challenge",
+      status: "pass",
+      message: `extensions.bazaar present (body-discovery variant: info.input/output + schema set)`,
+    };
+  }
+  const bazaarObj = bazaar as Record<string, unknown>;
   return {
     check: "challenge",
     status: "pass",
     message: `extensions.bazaar present (name="${bazaarObj["name"]}", description set)`,
   };
 }
+
+/**
+ * Re-export for callers/tests that need direct access to the variant
+ * detector. Single import surface.
+ */
+export { detectBazaarVariant };
 
 /**
  * Self-payment guard: `payer == payTo` is rejected by some facilitators

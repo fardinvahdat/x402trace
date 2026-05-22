@@ -9,7 +9,13 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-—
+### Fixed
+
+- **`bazaar-check` false-positive `implementation_issue` on body-discovery services** ([#72](https://github.com/fardinvahdat/x402trace/issues/72) → [X402-43](https://vahdatfardin.atlassian.net/browse/X402-43), thanks @AsaiShota 🙏 for the diagnosis with `@x402/extensions@2.11.0` package-source citation, and @0xdespot 🙏 for the second-voice corroboration on [x402-foundation/x402#2207](https://github.com/x402-foundation/x402/issues/2207)). v0.3.0/0.3.1's `src/bazaar/challenge.ts` and `src/bazaar/well-known.ts` both validated `extensions.bazaar` assuming the **MCP-discovery** shape (top-level `name` + `description`). Real-world v2 services using the **Body-discovery** shape (`info.input` + `info.output` + `schema` per `declareDiscoveryExtension(...)`) failed the envelope check despite being correctly implemented — verdict overrode the substantive indexing-probe signal. New `src/bazaar/extensions-bazaar.ts` helper detects the variant by shape (body-discovery indicators win; else assume mcp-discovery per ADR-004) and validates the variant-appropriate required-field set. Default-deny third branch for future `@x402/extensions` variants we don't recognise yet — skips shape validation with an informational pass rather than false-positive. Tests cover ≥4 cases per affected file (challenge.ts + well-known.ts) plus 13 helper unit tests.
+
+### JSON API
+
+No changes to the `--log json` envelope shape this session. The `bazaar-check` JSON output now includes a `detail.variant` field on extensions.bazaar-related check results (additive); existing fields and shapes are preserved per the JSON API stability commitment (ADR-004).
 
 ## [0.3.1] — 2026-05-20
 

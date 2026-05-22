@@ -12,13 +12,18 @@
  *   - Top-level `name` (string, non-empty) is present.
  *   - Top-level `description` (string, non-empty) is present.
  *   - `accepts` (array, optional) — if present, each entry is an object.
- *   - `extensions.bazaar.{name, description}` (string, non-empty) when
- *     bazaar discovery is opted into — either via `discovery_extension:
- *     "bazaar"` or by including `extensions.bazaar` at all. Empty string
- *     and whitespace-only are treated as missing: the mapper's listing
- *     UI renders them as blank cards, which is the failure mode that
- *     keeps reaching Discord (TheRoosters, GM, and the Max/Zev case
- *     surfaced by hypeprinter007-stack in #65 finding 2).
+ *   - `extensions.bazaar` conforms to its detected variant when bazaar
+ *     discovery is opted into — either via `discovery_extension:
+ *     "bazaar"` or by including `extensions.bazaar` at all. Two variants
+ *     are supported per `@x402/extensions@2.11.0`:
+ *       - **MCP-discovery:** `extensions.bazaar.{name, description}` as
+ *         non-empty strings (TheRoosters, GM, hypeprinter007 #65 pain
+ *         set — empty strings render as blank listing cards).
+ *       - **Body-discovery:** `extensions.bazaar.{info.input, info.output,
+ *         schema}` as non-null objects (AsaiShota #72 + 0xdespot #2207
+ *         pain set — was false-positive in v0.3.0/0.3.1).
+ *     See [extensions-bazaar.ts](./extensions-bazaar.ts) for the variant
+ *     detection rule and ADR-004 for the design rationale.
  *
  * Intentionally lenient on the rest of the spec. The schema is actively
  * evolving (per ADR-003 risk register); strict validation would
@@ -26,6 +31,7 @@
  * the structural defects that crawlers definitely reject.
  */
 
+import { validateBazaarExtension } from "./extensions-bazaar.js";
 import type { CheckResult, WellKnownManifest } from "./types.js";
 
 export interface WellKnownFetcher {
@@ -121,17 +127,23 @@ export async function checkWellKnown(
 
   const bazaarExt = readBazaarExtension(manifest);
   const declaresBazaar = manifest.discovery_extension === "bazaar";
+  let bazaarVariant: "mcp-discovery" | "body-discovery" | "unknown" | undefined = undefined;
   if (declaresBazaar || bazaarExt !== undefined) {
     if (bazaarExt === undefined) {
       issues.push(
         '`discovery_extension: "bazaar"` declared but `extensions.bazaar` is missing or not an object',
       );
     } else {
-      if (typeof bazaarExt.name !== "string" || bazaarExt.name.trim() === "") {
-        issues.push("missing or empty `extensions.bazaar.name` field");
-      }
-      if (typeof bazaarExt.description !== "string" || bazaarExt.description.trim() === "") {
-        issues.push("missing or empty `extensions.bazaar.description` field");
+      const validation = validateBazaarExtension(bazaarExt);
+      bazaarVariant = validation.variant;
+      if (validation.variant === "unknown") {
+        // Defensive forward-compat — variant unrecognised. Skip
+        // shape validation; caller already screened for object-ness
+        // via readBazaarExtension above. See ADR-004 risk register.
+      } else if (!validation.ok) {
+        for (const field of validation.missing) {
+          issues.push(`missing or empty \`extensions.bazaar.${field}\` field`);
+        }
       }
     }
   }
@@ -149,11 +161,18 @@ export async function checkWellKnown(
     };
   }
 
+  const bazaarSummary = bazaarExt
+    ? bazaarVariant === "body-discovery"
+      ? `, extensions.bazaar populated (body-discovery variant)`
+      : bazaarVariant === "unknown"
+        ? `, extensions.bazaar present (variant unrecognised; shape validation skipped)`
+        : `, extensions.bazaar populated`
+    : "";
   return {
     result: {
       check: "well-known",
       status: "pass",
-      message: `manifest at ${url} is well-formed (name="${manifest.name}", description set, accepts ${Array.isArray(manifest.accepts) ? `[${manifest.accepts.length}]` : "absent"}${bazaarExt ? `, extensions.bazaar populated` : ""})`,
+      message: `manifest at ${url} is well-formed (name="${manifest.name}", description set, accepts ${Array.isArray(manifest.accepts) ? `[${manifest.accepts.length}]` : "absent"}${bazaarSummary})`,
     },
     manifest,
   };
