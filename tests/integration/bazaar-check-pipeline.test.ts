@@ -340,4 +340,202 @@ describe("bazaar-check pipeline (hermetic)", () => {
     const out = JSON.parse(stdout.buf.join(""));
     expect(out.verdict.failedChecks).toContain("self-payment");
   });
+
+  // ---- X402-42 (D.4) — `--endpoint <paid-url>` per-route probe mode ----
+  //
+  // AsaiShota + evanatpizzarobot + 0xdespot all publish per-route on
+  // #2207 — root /.well-known/x402 returns 404 even though the per-route
+  // 402 challenge is well-formed. D.4 adds a flag to bypass the root
+  // probe and read the challenge directly from a paid endpoint.
+
+  describe("--endpoint mode (D.4)", () => {
+    const ENDPOINT = "https://api.example.test/api/premium/route";
+
+    /**
+     * Per-route fetcher: well-known URL is unreachable (404); challenge
+     * available at the endpoint URL with a well-formed body.
+     */
+    function endpointModeFetcher(
+      overrides: {
+        challenge?: () => Response;
+        discovery?: () => Response;
+      } = {},
+    ): typeof fetch {
+      return ((urlInput: string) => {
+        const url = String(urlInput);
+        if (url.endsWith("/.well-known/x402")) {
+          // Per-route services: root returns 404. Test asserts the
+          // bazaar-check pipeline does NOT call this URL under --endpoint.
+          return Promise.resolve(new Response("not found", { status: 404 }));
+        }
+        if (url.includes("discovery/resources")) {
+          return Promise.resolve(
+            overrides.discovery?.() ?? jsonResponse({ resources: [{ id: "r1" }] }),
+          );
+        }
+        // Challenge — endpoint URL OR (under default mode) service URL
+        return Promise.resolve(
+          overrides.challenge?.() ??
+            new Response(JSON.stringify(challengeBody()), {
+              status: 402,
+              headers: { "content-type": "application/json" },
+            }),
+        );
+      }) as typeof fetch;
+    }
+
+    it("happy path: skips well-known, fetches challenge from endpoint, returns looks_correct", async () => {
+      const stdout = captureStream();
+      const stderr = captureStream();
+      const fetchedUrls: string[] = [];
+      const fetcher = ((urlInput: string) => {
+        fetchedUrls.push(String(urlInput));
+        return endpointModeFetcher()(urlInput as unknown as Parameters<typeof fetch>[0]);
+      }) as typeof fetch;
+
+      const code = await runBazaarCheckCommand(
+        {
+          service: SERVICE,
+          endpoint: ENDPOINT,
+          log: "json",
+          chain: "base-sepolia",
+        },
+        { stdout: stdout.stream, stderr: stderr.stream, env: {}, fetcher },
+      );
+
+      expect(code).toBe(0);
+      const out = JSON.parse(stdout.buf.join(""));
+      expect(out.verdict.kind).toBe("looks_correct");
+
+      // well-known result is present but marked as skipped (status: pass)
+      const wk = out.results.find((r: { check: string }) => r.check === "well-known");
+      expect(wk.status).toBe("pass");
+      expect(wk.message).toMatch(/skipped per --endpoint/);
+
+      // Critical: well-known URL was NEVER fetched
+      expect(fetchedUrls.some((u) => u.endsWith("/.well-known/x402"))).toBe(false);
+
+      // Critical: the endpoint URL WAS fetched (used as challenge URL)
+      expect(fetchedUrls).toContain(ENDPOINT);
+    });
+
+    it("returns implementation_issue when the endpoint returns 402 with a malformed challenge body", async () => {
+      const stdout = captureStream();
+      const stderr = captureStream();
+      const code = await runBazaarCheckCommand(
+        {
+          service: SERVICE,
+          endpoint: ENDPOINT,
+          log: "json",
+          chain: "base-sepolia",
+        },
+        {
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          env: {},
+          fetcher: endpointModeFetcher({
+            // Challenge body missing extensions.bazaar
+            challenge: () =>
+              new Response(JSON.stringify(challengeBody({ extensions: undefined })), {
+                status: 402,
+                headers: { "content-type": "application/json" },
+              }),
+          }),
+        },
+      );
+
+      expect(code).toBe(2);
+      const out = JSON.parse(stdout.buf.join(""));
+      expect(out.verdict.kind).toBe("implementation_issue");
+      expect(out.verdict.failedChecks).toContain("challenge");
+      // well-known still skipped (no false-positive on missing root manifest)
+      expect(out.verdict.failedChecks).not.toContain("well-known");
+    });
+
+    it("returns implementation_issue when the endpoint returns 2xx (no 402 challenge)", async () => {
+      const stdout = captureStream();
+      const stderr = captureStream();
+      const code = await runBazaarCheckCommand(
+        {
+          service: SERVICE,
+          endpoint: ENDPOINT,
+          log: "json",
+          chain: "base-sepolia",
+        },
+        {
+          stdout: stdout.stream,
+          stderr: stderr.stream,
+          env: {},
+          fetcher: endpointModeFetcher({
+            challenge: () => new Response('{"ok":true}', { status: 200 }),
+          }),
+        },
+      );
+
+      expect(code).toBe(2);
+      const out = JSON.parse(stdout.buf.join(""));
+      expect(out.verdict.failedChecks).toContain("challenge");
+      const challenge = out.results.find((r: { check: string }) => r.check === "challenge");
+      expect(challenge.message).toMatch(/expected HTTP 402/);
+      expect(challenge.message).toMatch(/200/);
+    });
+
+    it("rejects an invalid --endpoint value with exit code 1", async () => {
+      const stdout = captureStream();
+      const stderr = captureStream();
+      const code = await runBazaarCheckCommand(
+        {
+          service: SERVICE,
+          endpoint: "not a valid url",
+          log: "json",
+          chain: "base-sepolia",
+        },
+        { stdout: stdout.stream, stderr: stderr.stream, env: {}, fetcher: endpointModeFetcher() },
+      );
+
+      expect(code).toBe(1);
+      expect(stderr.buf.join("")).toMatch(/--endpoint must be a valid URL/);
+    });
+
+    it("prints the UX note to stdout in human format", async () => {
+      const stdout = captureStream();
+      const stderr = captureStream();
+      await runBazaarCheckCommand(
+        {
+          service: SERVICE,
+          endpoint: ENDPOINT,
+          log: "human",
+          chain: "base-sepolia",
+        },
+        { stdout: stdout.stream, stderr: stderr.stream, env: {}, fetcher: endpointModeFetcher() },
+      );
+
+      const stdoutText = stdout.buf.join("");
+      expect(stdoutText).toMatch(/skipping root \/\.well-known\/x402 probe per --endpoint/);
+      expect(stdoutText).toMatch(/services that DO publish at root signal/);
+      // stderr should NOT contain the note in human format
+      expect(stderr.buf.join("")).not.toMatch(/skipping root \/\.well-known/);
+    });
+
+    it("prints the UX note to stderr in json format (keeps stdout JSON-parseable)", async () => {
+      const stdout = captureStream();
+      const stderr = captureStream();
+      await runBazaarCheckCommand(
+        {
+          service: SERVICE,
+          endpoint: ENDPOINT,
+          log: "json",
+          chain: "base-sepolia",
+        },
+        { stdout: stdout.stream, stderr: stderr.stream, env: {}, fetcher: endpointModeFetcher() },
+      );
+
+      expect(stderr.buf.join("")).toMatch(
+        /skipping root \/\.well-known\/x402 probe per --endpoint/,
+      );
+      // stdout must remain valid JSON (no info-note pollution)
+      const stdoutText = stdout.buf.join("");
+      expect(() => JSON.parse(stdoutText)).not.toThrow();
+    });
+  });
 });

@@ -9,13 +9,20 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`bazaar-check --endpoint <paid-url>` per-route 402 probe mode** ([X402-42](https://vahdatfardin.atlassian.net/browse/X402-42), D.4). For services that publish per-route instead of at root `/.well-known/x402` — the [#2207](https://github.com/x402-foundation/x402/issues/2207) pattern documented by @AsaiShota (test-echo-cdp), @evanatpizzarobot (TensorFeed), and @0xdespot (hyperD.ai). When `--endpoint` is supplied, the bazaar-check pipeline skips the root well-known probe entirely and fetches the 402 challenge directly from the given paid URL; manifest-shape validations run against the 402 body instead of the root manifest. Self-payment guard + CDP indexing query continue to run unchanged (they consume the challenge body's `payTo` regardless of how the challenge was obtained). UX: a one-line info note prints when `--endpoint` is used (`ℹ skipping root /.well-known/x402 probe per --endpoint. Note: services that DO publish at root signal extra discoverability hygiene; consider both.`); routes to stdout in `--log human` and stderr in `--log json` so stdout stays JSON-parseable. New `endpoint?: string` field on `BazaarCheckOptions` (programmatic API); new `endpoint?: string` field on `BazaarCheckCommandOptions`. URL-validated at command entry; non-URL values exit 1 with a clear error.
+
 ### Fixed
 
 - **`bazaar-check` false-positive `implementation_issue` on body-discovery services** ([#72](https://github.com/fardinvahdat/x402trace/issues/72) → [X402-43](https://vahdatfardin.atlassian.net/browse/X402-43), thanks @AsaiShota 🙏 for the diagnosis with `@x402/extensions@2.11.0` package-source citation, and @0xdespot 🙏 for the second-voice corroboration on [x402-foundation/x402#2207](https://github.com/x402-foundation/x402/issues/2207)). v0.3.0/0.3.1's `src/bazaar/challenge.ts` and `src/bazaar/well-known.ts` both validated `extensions.bazaar` assuming the **MCP-discovery** shape (top-level `name` + `description`). Real-world v2 services using the **Body-discovery** shape (`info.input` + `info.output` + `schema` per `declareDiscoveryExtension(...)`) failed the envelope check despite being correctly implemented — verdict overrode the substantive indexing-probe signal. New `src/bazaar/extensions-bazaar.ts` helper detects the variant by shape (body-discovery indicators win; else assume mcp-discovery per ADR-004) and validates the variant-appropriate required-field set. Default-deny third branch for future `@x402/extensions` variants we don't recognise yet — skips shape validation with an informational pass rather than false-positive. Tests cover ≥4 cases per affected file (challenge.ts + well-known.ts) plus 13 helper unit tests.
 
 ### JSON API
 
-No changes to the `--log json` envelope shape this session. The `bazaar-check` JSON output now includes a `detail.variant` field on extensions.bazaar-related check results (additive); existing fields and shapes are preserved per the JSON API stability commitment (ADR-004).
+Two additive changes to the `--log json` output this cycle, both preserving the existing envelope shape per ADR-004 Pillar 2:
+
+- The `bazaar-check` JSON output now includes a `detail.variant` field on extensions.bazaar-related check results from the D.5 variant-aware refactor (value: `"mcp-discovery"`, `"body-discovery"`, or `"unknown"`).
+- When `--endpoint` is supplied, the `well-known` result shape is preserved with a different `message`: `{ check: "well-known", status: "pass", message: "skipped per --endpoint (probing <url> directly instead of /.well-known/x402)" }`. The four-result envelope shape is preserved; the well-known slot's `message` field is the only carrier of the skip signal.
 
 ## [0.3.1] — 2026-05-20
 

@@ -28,6 +28,14 @@ export interface BazaarCheckCommandOptions {
   readonly discoveryBaseUrl?: string;
   /** Per-request timeout for bazaar-check HTTP probes. */
   readonly timeoutMs?: number;
+  /**
+   * X402-42 (D.4) — per-route 402 probe mode. When set, skips the root
+   * `/.well-known/x402` probe and fetches the 402 challenge directly
+   * from this paid endpoint URL instead. For services that only
+   * publish per-route (TensorFeed shape) or for validating one
+   * specific paid resource.
+   */
+  readonly endpoint?: string;
 }
 
 export interface BazaarCheckRunContext {
@@ -53,6 +61,14 @@ export async function runBazaarCheckCommand(
   } catch {
     ctx.stderr.write(`error: <service-url> must be a valid URL (got '${service}')\n`);
     return EXIT_USAGE;
+  }
+  if (opts.endpoint !== undefined) {
+    try {
+      new URL(opts.endpoint);
+    } catch {
+      ctx.stderr.write(`error: --endpoint must be a valid URL (got '${opts.endpoint}')\n`);
+      return EXIT_USAGE;
+    }
   }
 
   const chainKey: "base-sepolia" | "base" =
@@ -85,11 +101,21 @@ export async function runBazaarCheckCommand(
 
   const fetcher = withRequestTimeout(ctx.fetcher ?? fetch, timeoutMs);
 
+  // X402-42 (D.4) — per-route probe mode UX note.
+  if (opts.endpoint !== undefined) {
+    const note =
+      "ℹ skipping root /.well-known/x402 probe per --endpoint. " +
+      "Note: services that DO publish at root signal extra discoverability hygiene; consider both.";
+    if (format === "human") ctx.stdout.write(`${note}\n`);
+    else ctx.stderr.write(`${note}\n`);
+  }
+
   const report = await runBazaarCheck({
     serviceUrl: service,
     chain: chainKey,
     ...(opts.payerHint !== undefined ? { payerHint: opts.payerHint } : {}),
     ...(opts.discoveryBaseUrl !== undefined ? { discoveryBaseUrl: opts.discoveryBaseUrl } : {}),
+    ...(opts.endpoint !== undefined ? { endpoint: opts.endpoint } : {}),
     fetcher,
   });
 
