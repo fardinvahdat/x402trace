@@ -11,6 +11,7 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`bazaar-check --log json` is now a documented public API contract** ([X402-44](https://vahdatfardin.atlassian.net/browse/X402-44), ADR-004 Pillar 2). Three deliverables landed together: the contract doc at [`src/bazaar/json-api.md`](./src/bazaar/json-api.md) (envelope shape + per-check `detail` keys + verdict discriminator + stability rules + regeneration workflow), a frozen exemplar at [`tests/fixtures/bazaar/json-api-snapshot.json`](./tests/fixtures/bazaar/json-api-snapshot.json), and a snapshot test at [`tests/integration/bazaar-check-json-api.test.ts`](./tests/integration/bazaar-check-json-api.test.ts) (6 tests catch field renames, removals, additions, and reordering against the exemplar). **Versioning rule** committed: additive changes (new optional fields, new check names, new `verdict.kind` values, new `detail.*` keys) ship in MINOR versions with a `### JSON API` CHANGELOG entry; shape-breaking changes (renames, removals, type changes, fixed-position reordering) require a MAJOR version + integrator notice. Exit-code contract preserved across all minor versions (D.3's `upstream_stuck` will roll up to exit code 3, not a new code). README "JSON API" section added under the `bazaar-check` documentation; `CONTRIBUTING.md` "JSON API discipline" section added with a PR self-check. TomSmart_ai's mapper-integration is the named consumer this contract is committed to.
 - **`bazaar-check --endpoint <paid-url>` per-route 402 probe mode** ([X402-42](https://vahdatfardin.atlassian.net/browse/X402-42), D.4). For services that publish per-route instead of at root `/.well-known/x402` — the [#2207](https://github.com/x402-foundation/x402/issues/2207) pattern documented by @AsaiShota (test-echo-cdp), @evanatpizzarobot (TensorFeed), and @0xdespot (hyperD.ai). When `--endpoint` is supplied, the bazaar-check pipeline skips the root well-known probe entirely and fetches the 402 challenge directly from the given paid URL; manifest-shape validations run against the 402 body instead of the root manifest. Self-payment guard + CDP indexing query continue to run unchanged (they consume the challenge body's `payTo` regardless of how the challenge was obtained). UX: a one-line info note prints when `--endpoint` is used (`ℹ skipping root /.well-known/x402 probe per --endpoint. Note: services that DO publish at root signal extra discoverability hygiene; consider both.`); routes to stdout in `--log human` and stderr in `--log json` so stdout stays JSON-parseable. New `endpoint?: string` field on `BazaarCheckOptions` (programmatic API); new `endpoint?: string` field on `BazaarCheckCommandOptions`. URL-validated at command entry; non-URL values exit 1 with a clear error.
 
 ### Fixed
@@ -19,10 +20,11 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### JSON API
 
-Two additive changes to the `--log json` output this cycle, both preserving the existing envelope shape per ADR-004 Pillar 2:
+X402-44 establishes the formal `### JSON API` subsection discipline going forward — every PR that touches `--log json` output must add an entry here. Two additive changes are folded in retrospectively for the v0.3.2 cycle, both preserving the existing envelope shape per ADR-004 Pillar 2:
 
 - The `bazaar-check` JSON output now includes a `detail.variant` field on extensions.bazaar-related check results from the D.5 variant-aware refactor (value: `"mcp-discovery"`, `"body-discovery"`, or `"unknown"`).
 - When `--endpoint` is supplied, the `well-known` result shape is preserved with a different `message`: `{ check: "well-known", status: "pass", message: "skipped per --endpoint (probing <url> directly instead of /.well-known/x402)" }`. The four-result envelope shape is preserved; the well-known slot's `message` field is the only carrier of the skip signal.
+- No other shape changes this cycle. The frozen exemplar at `tests/fixtures/bazaar/json-api-snapshot.json` captures the canonical envelope after D.4 + D.5 land.
 
 ## [0.3.1] — 2026-05-20
 

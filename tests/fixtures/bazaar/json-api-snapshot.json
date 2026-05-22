@@ -1,0 +1,36 @@
+{
+  "serviceUrl": "https://api.example.test/api/snapshot",
+  "chain": "base-sepolia",
+  "results": [
+    {
+      "check": "well-known",
+      "status": "pass",
+      "message": "manifest at https://api.example.test/.well-known/x402 is well-formed (name=\"Snapshot API\", description set, accepts [0], extensions.bazaar populated)"
+    },
+    {
+      "check": "challenge",
+      "status": "pass",
+      "message": "extensions.bazaar present (name=\"Snapshot API\", description set)"
+    },
+    {
+      "check": "self-payment",
+      "status": "pass",
+      "message": "no payer-hint supplied; self-payment guard skipped (pass by default)"
+    },
+    {
+      "check": "indexing",
+      "status": "pass",
+      "message": "discovery returned 1 resource(s) for payTo=0x1111111111111111111111111111111111111111 — indexed",
+      "detail": {
+        "queryUrl": "https://test-discovery.example.test/v2/x402/discovery/resources?payTo=0x1111111111111111111111111111111111111111",
+        "status": "indexed",
+        "count": 1
+      }
+    }
+  ],
+  "verdict": {
+    "kind": "looks_correct",
+    "exitCode": 0,
+    "message": "all checks pass. Your bazaar integration looks correct; if you're seeing a Bazaar indexing delay, give CDP 24-48h before assuming a problem."
+  }
+}
