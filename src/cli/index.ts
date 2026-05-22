@@ -82,6 +82,7 @@ interface BazaarCheckFlags {
   payerHint?: string;
   discoveryBaseUrl?: string;
   timeoutMs?: string;
+  endpoint?: string;
 }
 
 interface VersionsFlags {
@@ -305,6 +306,10 @@ export async function runCli(argv: readonly string[], ctx: CliContext): Promise<
       "Override the CDP discovery base URL (default https://api.cdp.coinbase.com)",
     )
     .option("--timeout-ms <ms>", "Per-request timeout for bazaar-check HTTP probes (default 10000)")
+    .option(
+      "--endpoint <paid-url>",
+      "Per-route 402 probe mode (D.4): skip root /.well-known/x402 and fetch the 402 challenge from this paid URL instead. For services that only publish per-route.",
+    )
     .action(async (service: string, flags: BazaarCheckFlags) => {
       const log = flags.log as LogFormat | undefined;
       const chain = flags.chain as "base-sepolia" | "base" | undefined;
@@ -318,6 +323,7 @@ export async function runCli(argv: readonly string[], ctx: CliContext): Promise<
             ? { discoveryBaseUrl: flags.discoveryBaseUrl }
             : {}),
           ...(flags.timeoutMs !== undefined ? { timeoutMs: Number(flags.timeoutMs) } : {}),
+          ...(flags.endpoint !== undefined ? { endpoint: flags.endpoint } : {}),
         },
         { stdout: ctx.stdout, stderr: ctx.stderr, env: ctx.env },
       );

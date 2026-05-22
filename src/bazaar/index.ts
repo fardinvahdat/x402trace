@@ -47,24 +47,51 @@ export interface BazaarCheckOptions {
   readonly discoveryBaseUrl?: string;
   /** Inject a custom fetch implementation across all HTTP calls. */
   readonly fetcher?: typeof fetch;
+  /**
+   * X402-42 (D.4) — when set, skip the root `/.well-known/x402` probe
+   * entirely and probe `endpoint` directly for the 402 challenge
+   * instead. For services that only publish per-route (TensorFeed
+   * shape, AsaiShota's test-echo-cdp, 0xdespot's hyperD) or for
+   * validating one specific paid route. The default mode (probe root
+   * well-known) stays — services that publish at root signal extra
+   * discoverability hygiene worth preserving.
+   */
+  readonly endpoint?: string;
 }
 
 /**
  * Run all four bazaar checks and return an aggregated report. Pure
  * orchestration — never throws on individual check failure (each
  * check captures its own error into a CheckResult).
+ *
+ * When `endpoint` is supplied (X402-42 / D.4), the root
+ * `/.well-known/x402` probe is skipped and the challenge is fetched
+ * from `endpoint` directly. Self-payment + indexing checks behave
+ * identically — they consume the challenge body's payTo regardless
+ * of how the challenge was obtained.
  */
 export async function runBazaarCheck(opts: BazaarCheckOptions): Promise<BazaarReport> {
   const fetcher = opts.fetcher ?? fetch;
   const results: CheckResult[] = [];
 
-  // 1. Well-known manifest
-  const wk = await checkWellKnown(opts.serviceUrl, fetcher);
-  results.push(wk.result);
+  const useEndpointMode = opts.endpoint !== undefined;
+  const challengeUrl = opts.endpoint ?? opts.serviceUrl;
 
-  // 2. 402 challenge structure
-  const challengeFetch = await fetchChallenge(opts.serviceUrl, fetcher);
-  results.push(checkChallenge(opts.serviceUrl, challengeFetch, { expectBazaar: true }));
+  // 1. Well-known manifest (skipped under --endpoint mode)
+  if (useEndpointMode) {
+    results.push({
+      check: "well-known",
+      status: "pass",
+      message: `skipped per --endpoint (probing ${opts.endpoint} directly instead of /.well-known/x402)`,
+    });
+  } else {
+    const wk = await checkWellKnown(opts.serviceUrl, fetcher);
+    results.push(wk.result);
+  }
+
+  // 2. 402 challenge structure (uses endpoint URL when set)
+  const challengeFetch = await fetchChallenge(challengeUrl, fetcher);
+  results.push(checkChallenge(challengeUrl, challengeFetch, { expectBazaar: true }));
 
   // 3. Self-payment guard (uses payerHint if supplied; otherwise pass)
   if (challengeFetch.ok) {
