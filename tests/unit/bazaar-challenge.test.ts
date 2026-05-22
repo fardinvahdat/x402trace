@@ -187,6 +187,106 @@ describe("checkChallenge", () => {
   });
 });
 
+// ---- X402-43 (D.5) variant-aware extensions.bazaar ----
+//
+// AsaiShota #72 + 0xdespot #2207 — body-discovery shape (info.input +
+// info.output + schema) was false-positive `implementation_issue` in
+// v0.3.0/0.3.1. These tests cover the variant-aware refactor.
+
+describe("checkChallenge — body-discovery variant (D.5)", () => {
+  function bodyDiscoveryChallenge(bazaarOverride: Record<string, unknown> = {}): unknown {
+    return challengeBody({
+      extensions: {
+        bazaar: {
+          info: {
+            input: { type: "object", properties: { q: { type: "string" } } },
+            output: { type: "object", properties: { result: { type: "string" } } },
+          },
+          schema: { version: 1 },
+          ...bazaarOverride,
+        },
+      },
+    });
+  }
+
+  it("passes on a well-formed body-discovery extensions.bazaar shape (AsaiShota #72 + 0xdespot regression guard)", () => {
+    const r = checkChallenge(SERVICE, {
+      ok: true,
+      requirements: {
+        scheme: "exact",
+        network: "base-sepolia",
+        maxAmountRequired: "1000",
+        resource: SERVICE,
+        payTo: PAY_TO,
+        asset: USDC,
+        maxTimeoutSeconds: 300,
+      },
+      rawBody: bodyDiscoveryChallenge(),
+    });
+    expect(r.status).toBe("pass");
+    expect(r.message).toMatch(/body-discovery/);
+  });
+
+  it("fails when body-discovery is missing info.output", () => {
+    const r = checkChallenge(SERVICE, {
+      ok: true,
+      requirements: {
+        scheme: "exact",
+        network: "base-sepolia",
+        maxAmountRequired: "1000",
+        resource: SERVICE,
+        payTo: PAY_TO,
+        asset: USDC,
+        maxTimeoutSeconds: 300,
+      },
+      rawBody: bodyDiscoveryChallenge({ info: { input: {}, output: null } }),
+    });
+    expect(r.status).toBe("fail");
+    expect(r.message).toMatch(/info\.output/);
+    expect(r.detail?.variant).toBe("body-discovery");
+  });
+
+  it("fails when body-discovery is missing schema", () => {
+    const r = checkChallenge(SERVICE, {
+      ok: true,
+      requirements: {
+        scheme: "exact",
+        network: "base-sepolia",
+        maxAmountRequired: "1000",
+        resource: SERVICE,
+        payTo: PAY_TO,
+        asset: USDC,
+        maxTimeoutSeconds: 300,
+      },
+      rawBody: bodyDiscoveryChallenge({ schema: "not an object" }),
+    });
+    expect(r.status).toBe("fail");
+    expect(r.message).toMatch(/schema/);
+    expect(r.detail?.variant).toBe("body-discovery");
+  });
+
+  it("passes when body-discovery indicators are present even without top-level name/description (body wins over mcp default)", () => {
+    // The hybrid case: an object that has both shapes' fields. Body
+    // indicators take precedence per ADR-004 design — services that
+    // ship info.input/output/schema are body-discovery by design.
+    const r = checkChallenge(SERVICE, {
+      ok: true,
+      requirements: {
+        scheme: "exact",
+        network: "base-sepolia",
+        maxAmountRequired: "1000",
+        resource: SERVICE,
+        payTo: PAY_TO,
+        asset: USDC,
+        maxTimeoutSeconds: 300,
+      },
+      rawBody: bodyDiscoveryChallenge(), // No name/description, just info+schema
+    });
+    expect(r.status).toBe("pass");
+    expect(r.message).toMatch(/body-discovery/);
+  });
+});
+
 describe("checkSelfPayment", () => {
   it("passes when no payerHint is supplied (silent default)", () => {
     const r = checkSelfPayment(PAY_TO);

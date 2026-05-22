@@ -176,4 +176,82 @@ describe("checkWellKnown", () => {
     const { result } = await checkWellKnown(SERVICE, fetcher);
     expect(result.status).toBe("pass");
   });
+
+  // ---- X402-43 (D.5) variant-aware extensions.bazaar ----
+  //
+  // The manifest D.1 hygiene check from PR #70 carried the same
+  // McpDiscoveryExtension assumption that challenge.ts had —
+  // false-positive `implementation_issue` on body-discovery services.
+  // AsaiShota #72 + 0xdespot #2207 corroboration. These tests cover
+  // the variant-aware refactor for the well-known surface.
+
+  describe("body-discovery variant", () => {
+    function bodyDiscoveryManifest(bazaarOverride: Record<string, unknown> = {}): unknown {
+      return {
+        name: "X",
+        description: "Y",
+        extensions: {
+          bazaar: {
+            info: {
+              input: { type: "object", properties: { q: { type: "string" } } },
+              output: { type: "object", properties: { result: { type: "string" } } },
+            },
+            schema: { version: 1 },
+            ...bazaarOverride,
+          },
+        },
+      };
+    }
+
+    it("passes on a well-formed body-discovery bazaar extension", async () => {
+      const fetcher = mockFetch(() => jsonResponse(bodyDiscoveryManifest()));
+      const { result } = await checkWellKnown(SERVICE, fetcher);
+      expect(result.status).toBe("pass");
+      expect(result.message).toMatch(/body-discovery variant/);
+    });
+
+    it("fails when body-discovery is missing info.input", async () => {
+      const fetcher = mockFetch(() =>
+        jsonResponse(bodyDiscoveryManifest({ info: { input: null, output: {} } })),
+      );
+      const { result } = await checkWellKnown(SERVICE, fetcher);
+      expect(result.status).toBe("fail");
+      expect(result.detail?.issues).toEqual(
+        expect.arrayContaining([expect.stringMatching(/extensions\.bazaar\.info\.input/)]),
+      );
+    });
+
+    it("fails when body-discovery is missing schema (whole schema key non-object)", async () => {
+      const fetcher = mockFetch(() =>
+        jsonResponse(bodyDiscoveryManifest({ schema: "not an object" })),
+      );
+      const { result } = await checkWellKnown(SERVICE, fetcher);
+      expect(result.status).toBe("fail");
+      expect(result.detail?.issues).toEqual(
+        expect.arrayContaining([expect.stringMatching(/extensions\.bazaar\.schema/)]),
+      );
+    });
+
+    it("passes when discovery_extension: bazaar is declared and body-discovery shape is correct", async () => {
+      const fetcher = mockFetch(() =>
+        jsonResponse({
+          name: "X",
+          description: "Y",
+          discovery_extension: "bazaar",
+          extensions: {
+            bazaar: {
+              info: {
+                input: { type: "object" },
+                output: { type: "object" },
+              },
+              schema: { version: 1 },
+            },
+          },
+        }),
+      );
+      const { result } = await checkWellKnown(SERVICE, fetcher);
+      expect(result.status).toBe("pass");
+      expect(result.message).toMatch(/body-discovery variant/);
+    });
+  });
 });
