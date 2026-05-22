@@ -216,3 +216,109 @@ Each ADR uses this template:
   - **Out of scope for v0.3, kept for v0.3.1+ or later:** ERC-6492 Smart Wallet, reconciliation webhook / auto-retry, server-side broken-client detection, `extensions.diagnostic` decoder (gated on upstream), `tokenNameMismatchRule`, `repeatedNonceRule`, `--watch` daemon, audit export, cold-start optimization, non-Base chains, SaaS surface.
 
 ---
+
+## ADR-004: v0.3.2 metadata-propagation scope + JSON API stability commitment + facilitator-aware verdict semantics
+
+- **Status:** Accepted
+- **Date:** 2026-05-22
+- **Context:** v0.3.0 shipped 2026-05-17 with `bazaar-check`'s three-verdict taxonomy (`looks_correct` / `implementation_issue` / `upstream_issue`). v0.3.1 hotfix shipped 2026-05-20 with two external-contributor PRs ([#66](https://github.com/fardinvahdat/x402trace/pull/66) v2 challenge parse fix by @hypeprinter007-stack, [#67](https://github.com/fardinvahdat/x402trace/pull/67) bazaar-check HTTP probe timeouts by @peterxing). Adoption signal was strong: 6 unique named operators ran v0.3.1 against production in <72h (@TomSmart_ai 19-URL fixture, @AsaiShota test-echo-cdp, @evanatpizzarobot tensorfeed, @TKCollective agentoracle.co, @Ferj Discord diagnostics, @0xdespot hyperD.ai). The v0.3.1 verdict-taxonomy held stable across the hotfix (@TomSmart_ai 2026-05-21 rerun: 19/19 stay `implementation_issue`, no verdict shift).
+
+  Three structural decisions surfaced from v0.3.1+ operator activity that require an ADR before v0.3.2 implementation begins:
+
+  1. **Verdict taxonomy needs a 4th composite.** Max's `polyodds.bet` settle on 2026-05-20 succeeded against CDP `/settle` with `{bazaar: {status: "processing"}}`, but Seller Tools showed empty `{bazaar:{}}` — queue never drains. The current `upstream_issue` verdict conflates "facilitator settled but indexer is broken" with "I never reached the facilitator," which is precisely the conflation Aayushi (cdp-verified support) hit when initially diagnosing Max's case as "we don't see your settle." D.3 (X402-46, indexer-state probe) introduces a new top-level composite `upstream_stuck` to surface stalled-indexer cases distinctly from generic upstream failures.
+
+  2. **JSON output shape needs to be a public contract.** @TomSmart_ai's sampled-probe → tier-dimension store integration depends on the `--log json` envelope staying stable across minor versions. He raised this in DM 2026-05-20 building "a weekly bg job that updates a tier column on the catalogue." Maintainer commitment in DM reply: *"Will keep the JSON output shape stable across minor versions explicitly going forward."* That commitment needs to land as an explicit ADR + snapshot tests + versioning rule + `### JSON API` CHANGELOG discipline so downstream consumers can take a runtime dependency on the shape.
+
+  3. **Verdict semantics need to be facilitator-aware.** @Cryptor's Discord #general 2026-05-21 empirical test established that Bazaar indexing is CDP-only by design; @Ferj (cdp-verified, the original [[bazaar-indexing-spec]] authority) publicly self-corrected the prior "facilitator-agnostic" claim within 4 minutes: *"Bazaar indexing is gated on a successful CDP transaction, not just the manifest being present."* x402trace's verdict logic was built on the now-retracted facilitator-agnostic model. Without a refinement, non-CDP services (self-hosted facilitators, x402-rs, hypeprinter007's JPYC-on-Polygon rail in anchor-x402) would verdict to `upstream_issue` for failing to surface on Bazaar — a false positive on working-as-intended behavior.
+
+  All three need to land together because they jointly define the v0.3.2 verdict surface. D.2 (X402-45 propagation diff) + D.3 (X402-46 indexer-state) + D.5 (X402-43 variant-aware extensions.bazaar) all consume the verdict-semantic decisions made here.
+
+- **Decision:** **v0.3.2 = the "verdict precision" release.** Three pillars lock now:
+
+  **Pillar 1 — verdict taxonomy extension: `upstream_stuck`**
+
+  Top-level verdict gains a 4th value:
+  - `looks_correct` (existing)
+  - `implementation_issue` (existing)
+  - `upstream_issue` (existing)
+  - **`upstream_stuck`** (new) — facilitator settled the transaction, but the downstream indexer hasn't advanced past `processing` within the staleness threshold (default 24h, configurable via `--processing-stale-after-hours`)
+
+  **Exit-code contract preserved:** `upstream_stuck` rolls up to **exit code 3** (folds into `upstream_issue` for CI integration backward-compat). The verdict prose + JSON facets carry the granularity; the exit-code surface stays a 3-value contract (`0` looks_correct / `2` implementation_issue / `3` upstream_issue OR upstream_stuck). Downstream CI consumers that grep exit codes don't break.
+
+  **D.3 ([X402-46](https://vahdatfardin.atlassian.net/browse/X402-46)) introduces this verdict + the supporting `indexer_state` facet** (`indexed | processing_fresh | processing_stale | unknown | not_applicable_non_cdp` — the last value derives from Pillar 3 below).
+
+  **Pillar 2 — JSON API stability commitment**
+
+  The `--log json` envelope becomes a documented public API contract:
+
+  - **Snapshot tests** in `tests/integration/bazaar-check-json-api.test.ts` against a frozen exemplar at `tests/fixtures/bazaar/json-api-snapshot.json`. Any field rename, removal, or unexpected reordering fails CI.
+  - **Versioning rule:** additive changes (new optional fields, new optional facets) ship in minor versions. Renames / removals / shape changes require a major version + integrator notice + an explicit CHANGELOG `### JSON API` subsection.
+  - **`src/bazaar/json-api.md`** documents the contract (top-level keys, each facet's shape, versioning rule).
+  - **CHANGELOG discipline:** any change to `--log json` output gets an explicit `### JSON API` subsection going forward. PR template + `CONTRIBUTING.md` reinforce the discipline.
+
+  **JSON API stability ([X402-44](https://vahdatfardin.atlassian.net/browse/X402-44)) lands before D.2/D.3** so the new D.x facets go through the snapshot contract from the start.
+
+  **Pillar 3 — facilitator-aware verdict semantics**
+
+  Bazaar indexing is CDP-only by design. Non-CDP services produce two new verdict-facet states:
+
+  - `indexer_state: not_applicable_non_cdp` (in D.3)
+  - `metadata_propagation: not_applicable_non_cdp` (in D.2)
+
+  Both roll up to **composite verdict `looks_correct`** (working-as-intended), NOT `upstream_issue`. The principle: **x402trace reports on what Bazaar can index, not what Bazaar *should* index.**
+
+  **Facilitator detection** (decision deferred to D.3 implementation, three options remain open):
+  1. Trust `bazaar.facilitator` manifest claim if the operator self-declares
+  2. Derive from runtime behavior via TomSmart's cdp-mature fixture `facilitator_inferred` field
+  3. Empirical probe against CDP discovery (`/v2/x402/discovery/resources?payTo=<addr>`)
+
+  Option (3) is most robust but adds latency. Option (1) is fastest but trusts self-declaration. Option (2) is the precision middle-ground but requires TomSmart's fixture to land first (2026-05-24 ETA).
+
+  **Upstream verdict still reflects implementation correctness.** A non-CDP service with a malformed challenge still verdicts to `implementation_issue` on D.5 (variant-aware extensions.bazaar) — just not on D.2/D.3 facets.
+
+  **v0.3.2 committed scope (7 items, sequenced by [X402-41](https://vahdatfardin.atlassian.net/browse/X402-41) → [X402-48](https://vahdatfardin.atlassian.net/browse/X402-48)):**
+
+  | Item | Ticket | Source/evidence |
+  |---|---|---|
+  | ADR-004 (this ADR) | X402-41 | Three pillars above |
+  | D.4 `--endpoint <paid-url>` per-route probe | X402-42 | @AsaiShota + @evanatpizzarobot + @0xdespot on [#2207](https://github.com/x402-foundation/x402/issues/2207) |
+  | D.5 variant-aware `extensions.bazaar` validation (Body vs Mcp discovery) | X402-43 | @AsaiShota [#72](https://github.com/fardinvahdat/x402trace/issues/72) + @0xdespot corroboration on #2207 |
+  | JSON API stability (Pillar 2) | X402-44 | @TomSmart_ai mapper integration commitment |
+  | D.2 propagation diff (manifest vs indexer render) | X402-45 | TheRoosters + GM + @zev |
+  | D.3 indexer-state probe + `upstream_stuck` (Pillar 1) | X402-46 | @Max + @0xdespot bucket-1/2/3 taxonomy |
+  | Production-set fixture consumption (6-fixture pipeline) | X402-47 | @TomSmart_ai + @AsaiShota + @evanatpizzarobot + @0xdespot + @hypeprinter007-stack |
+  | v0.3.2 release cut | X402-48 | All above |
+
+  10 Blocks dependency links wired in Jira. Fixture-freeze gate: @TomSmart_ai cdp-mature drop in `#show-and-tell` on 2026-05-24 ~07:00 UTC.
+
+  **Operating mode for v0.3.2:** strict 6-stage audit gate stays active (carried from ADR-003), but user IS in the review loop again — so PR-body audit logs become **abbreviated** (one-line summary per stage instead of paragraphs). Drive-by guard, edge-case enumeration, and re-audit gap-check still required substantively. If user shifts back to autonomous mode mid-cycle (travel, focus block), revert to full-write-up audit logs.
+
+  **Naming-collision resolution:** [X402-37](https://vahdatfardin.atlassian.net/browse/X402-37) (stretch SLA-breach observation, v0.3.0 cycle, never started) reserved "ADR-004" historically. This ADR claims the number; X402-37's ADR reference renumbers to next available (likely ADR-005) when/if that stretch ticket goes active.
+
+- **Consequences:**
+  - **Enables.** Verdict precision across four distinct upstream failure modes (well-known absence, indexer queue stalled, indexer drops fields, non-CDP service out-of-scope). JSON output becomes a runtime contract @TomSmart_ai can take a dependency on; mapper-integration ships against a stable envelope. Non-CDP services (self-hosted facilitators, x402-rs, JPYC-on-Polygon, future ecosystem additions) get accurate verdicts instead of false-positive `upstream_issue` for working-as-intended behavior. Six pre-committed fixtures (TomSmart 19-URL + cdp-mature, AsaiShota test-echo-cdp, evanatpizzarobot tensorfeed, 0xdespot hyperD, hypeprinter007 anchor-x402 multi-rail) anchor the integration tests against real-operator data.
+  - **Restricts.** Still no Solana coverage, no Lightning, no escrow scheme — out of Base + `exact` EVM wedge per ADR-001. Still read-only — no auto-remediation. Still no SaaS surface. Candidate F (alt-challenge-surface from @0xdespot's `x-free-tier-upgrade` observation) stays below the strictness bar at 1/n; no implementation lean recorded publicly. Candidate G (facilitator-fitness check) stays watch-only in `next_likely_fires`; needs 2nd voice on non-CDP-indexing operator pain to fire (TomSmart's mapper-db filter is corroborative, not generative).
+  - **Risks.**
+    1. **`upstream_stuck` rollup-to-3 could surprise CI integrations** that expected a new exit code for the new verdict. Mitigation: rollup is deliberate per the exit-code-contract decision above; CHANGELOG `### JSON API` discipline makes the additive shape explicit; the new verdict-prose carries the granularity for log-grepping consumers.
+    2. **JSON API snapshot tests create churn on intentional shape evolutions.** Medium. Mitigation: snapshot fixture is a hand-rolled exemplar regenerated when shape is intentionally changed; CONTRIBUTING.md documents the regenerate-snapshot + CHANGELOG `### JSON API` workflow; PR template asks the question.
+    3. **D.3 staleness threshold (24h default) is wrong for real operators.** Medium-high. Mitigation: `--processing-stale-after-hours` configurable; default based on Ferj's "happens a few times a day" indexing-cadence note in [[bazaar-indexing-spec]]; revisit after first month of operator feedback post-ship.
+    4. **CDP discovery API shape drift breaks D.2/D.3.** Medium (Coinbase has changed indexing API surface multiple times this year per Discord transcripts). Mitigation: cache known-good response shape in tests; fail soft with "discovery API shape changed, please update x402trace" on drift; don't pretend to parse a frozen format. Same mitigation pattern as ADR-003 risk register.
+    5. **Facilitator-detection logic is wrong for some operators.** Low-medium. Mitigation: default-deny on ambiguous cases (e.g., `unknown` facilitator → `not_applicable_non_cdp` rather than false-positive `upstream_issue`); D.3 implementation picks one of the 3 options above per latency/correctness tradeoff.
+    6. **Composite verdict change (`upstream_stuck`) breaks downstream consumers** that parse verdict prose literally. Low. Exit code 3 preserved; CHANGELOG `### JSON API` discipline documents the change; sub-verdict facets are additive in JSON output.
+    7. **TomSmart's fixture drop slips past 2026-05-24.** Low. If his Sunday drop slides, the v0.3.2 fixture-freeze gate slides with it (not the scope). The 2026-05-26 estimated tag-push is provisional; ~36-40h audit-gate window after his drop is the hard window.
+    8. **The retraction in [[bazaar-indexing-spec]] memory creates churn for other downstream consumers** (operator-facing copy, listing-readiness framing). Mitigation: prepend correction notice preserves audit trail; [[listing-readiness-framing]] gets a CDP-only nuance section; TomSmart's coinage still works for CDP-settled majority.
+
+- **Rejected alternatives:**
+  - **New top-level exit code (4) for `upstream_stuck`.** Considered to preserve verdict/exit-code 1:1 mapping. Rejected: existing CI integrations grep exit code 3 for any upstream issue; introducing exit code 4 forces all downstream consumers to update for a granularity refinement they may not care about. The verdict prose + JSON facets carry the granularity for tools that do care.
+  - **Make JSON API stability a TODO instead of a contract.** Considered to defer the commitment cost. Rejected: TomSmart's integration is in flight NOW, building against the current shape; without an explicit contract, the next bug-fix-driven shape tweak silently breaks his mapper. The snapshot test + `### JSON API` discipline are cheap to maintain; the cost of not committing is asymmetric (one mapper breakage costs more than 100 snapshot regenerations).
+  - **Treat non-CDP services as `unknown` instead of `not_applicable_non_cdp`.** Considered for simpler state machine. Rejected: "unknown" implies x402trace couldn't determine the state (transient, missing data). "not_applicable_non_cdp" is a definitive answer with different operator response — a non-CDP operator running `bazaar-check` shouldn't be told their service "isn't ready for listing" when the actual situation is "Bazaar doesn't surface non-CDP services in the first place." Different semantic, different remediation; deserves a distinct state.
+  - **Defer Pillar 3 (facilitator-aware semantics) to v0.4.** Considered the night the correction landed (2026-05-21). Rejected: D.5 (X402-43) implementation against anchor-x402's multi-rail fixture (which includes a non-CDP JPYC Polygon rail) starts within the v0.3.2 cycle; baking the constraint in retroactively after D.5 ships would mean false-positive `implementation_issue` on JPYC for the v0.3.2 ship window. Pillar 3 must land in the ADR before D.x implementation begins.
+  - **Promote candidate_G (facilitator-fitness check) to v0.3.2 committed scope.** Considered given the architectural alignment surfaced by TomSmart's mapper-db filter. Rejected: 1 voice (Cryptor's empirical test) is corrective, not pain. Promotion requires a non-CDP operator surfacing operator-facing frustration with non-indexing. Hold for 2nd voice; watch-only in `candidates.json next_likely_fires`.
+
+- **What this means concretely for the v0.3.2 cycle (provisional 2026-05-22 → 2026-05-26):**
+  - **Execution order:** [X402-41](https://vahdatfardin.atlassian.net/browse/X402-41) (this ADR) → ([X402-42](https://vahdatfardin.atlassian.net/browse/X402-42) D.4 ∥ [X402-43](https://vahdatfardin.atlassian.net/browse/X402-43) D.5) → [X402-44](https://vahdatfardin.atlassian.net/browse/X402-44) JSON API stability → [X402-45](https://vahdatfardin.atlassian.net/browse/X402-45) D.2 → [X402-46](https://vahdatfardin.atlassian.net/browse/X402-46) D.3 → [X402-47](https://vahdatfardin.atlassian.net/browse/X402-47) fixture consumption → [X402-48](https://vahdatfardin.atlassian.net/browse/X402-48) release cut.
+  - **No D.x implementation begins until [X402-41](https://vahdatfardin.atlassian.net/browse/X402-41) merges.** Scope-lock first, then build. Same pattern as ADR-003 → X402-31.
+  - **Fixture-freeze gate:** @TomSmart_ai cdp-mature fixture lands in `#show-and-tell` on 2026-05-24 ~07:00 UTC (or Sat 2026-05-23 morning per his preference). Mirror to `tests/fixtures/bazaar/multi-rail/cdp-mature-2026-05-21.json` on merge. ~36-40h wire-up + audit-gate window after his drop is the v0.3.2 ship window.
+  - **Out of scope for v0.3.2, kept for v0.3.3+ or later:** candidate_F alt-challenge-surface (1 voice @0xdespot), candidate_G facilitator-fitness check (1 voice @Cryptor, corroborative not generative), `tokenNameMismatchRule`, `repeatedNonceRule`, `extensions.diagnostic` decoder (gated on [x402-foundation/x402#1875](https://github.com/x402-foundation/x402/pull/1875)), `--watch` daemon, ERC-6492, non-Base chains, SaaS surface. All retained per ADR-003's restrictions; this ADR adds no new restrictions, only sharpens verdict semantics within the existing wedge.
+
+---
