@@ -20,7 +20,14 @@ import { execSync } from "node:child_process";
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
-const MAX_UNPACKED_BYTES = 400 * 1024;
+// v0.3.0 actual ~337 KB → v0.3.1 ~349 KB → v0.3.2 ~407 KB. v0.3.2 cycle adds
+// six new dist/ modules (D.2 propagation, D.3 facilitator-detect, D.5
+// extensions-bazaar, src/bazaar/json-api.md shipped in dist) plus a fatter
+// CHANGELOG.md (which is in `files` and therefore part of the unpacked
+// surface). Bump the cap to 420 KB for v0.3.2; revisit in v0.3.3 when the
+// next surface cleanup happens (extracting the legacy `detail.status` field
+// on indexing per ADR-004's deferred follow-up).
+const MAX_UNPACKED_BYTES = 420 * 1024;
 // v0.3.0: 96 → v0.3.1 + PR #69 fixtures: 100 → v0.3.2 cycle adds (json-api
 // stability + D.5 extensions-bazaar + D.2 propagation + D.3 facilitator-
 // detect): 102. Raised to 110 with breathing room for X402-47 fixture
