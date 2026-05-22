@@ -1,0 +1,60 @@
+{
+  "$comment": "D.3 — facilitator settled but CDP discovery returns 0 resources for the payTo → indexer_state: processing → upstream_stuck verdict. Models Max's polyodds.bet pattern (canonical #2207 cluster).",
+  "scenario": "d3-processing-stuck",
+  "input": {
+    "serviceUrl": "https://api.fixture-d3.example.test",
+    "chain": "base-sepolia"
+  },
+  "mocks": {
+    "well-known": {
+      "status": 200,
+      "body": {
+        "name": "Fixture D.3 Service",
+        "description": "Service whose indexer queue is stuck on processing",
+        "accepts": [],
+        "extensions": {
+          "bazaar": {
+            "name": "Fixture D.3 Service",
+            "description": "Service whose indexer queue is stuck on processing"
+          }
+        }
+      }
+    },
+    "challenge": {
+      "status": 402,
+      "body": {
+        "x402Version": 1,
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "base-sepolia",
+            "maxAmountRequired": "1000",
+            "resource": "https://api.fixture-d3.example.test",
+            "payTo": "0xd3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3",
+            "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+            "maxTimeoutSeconds": 300
+          }
+        ],
+        "extensions": {
+          "bazaar": {
+            "name": "Fixture D.3 Service",
+            "description": "Service whose indexer queue is stuck on processing"
+          }
+        }
+      }
+    },
+    "discovery": {
+      "status": 200,
+      "body": {
+        "resources": []
+      }
+    }
+  },
+  "expected": {
+    "verdict": "upstream_stuck",
+    "exitCode": 3,
+    "facets": {
+      "indexing.indexer_state": "processing"
+    }
+  }
+}

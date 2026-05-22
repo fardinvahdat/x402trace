@@ -1,0 +1,61 @@
+{
+  "$comment": "D.2 — manifest correct, indexer surfaces blank resource → metadata_propagation: missing. Models @zev / TheRoosters / GM pattern.",
+  "scenario": "d2-missing-propagation",
+  "input": {
+    "serviceUrl": "https://api.fixture-d2.example.test",
+    "chain": "base-sepolia"
+  },
+  "mocks": {
+    "well-known": {
+      "status": 200,
+      "body": {
+        "name": "Fixture D.2 Service",
+        "description": "Real description in the manifest",
+        "accepts": [],
+        "extensions": {
+          "bazaar": {
+            "name": "Fixture D.2 Service",
+            "description": "Real description in the manifest"
+          }
+        }
+      }
+    },
+    "challenge": {
+      "status": 402,
+      "body": {
+        "x402Version": 1,
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "base-sepolia",
+            "maxAmountRequired": "1000",
+            "resource": "https://api.fixture-d2.example.test",
+            "payTo": "0xd2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2d2",
+            "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+            "maxTimeoutSeconds": 300
+          }
+        ],
+        "extensions": {
+          "bazaar": {
+            "name": "Fixture D.2 Service",
+            "description": "Real description in the manifest"
+          }
+        }
+      }
+    },
+    "discovery": {
+      "status": 200,
+      "body": {
+        "resources": [{ "id": "blank-card-resource" }]
+      }
+    }
+  },
+  "expected": {
+    "verdict": "upstream_issue",
+    "exitCode": 3,
+    "facets": {
+      "propagation.metadata_propagation": "missing",
+      "indexing.indexer_state": "indexed"
+    }
+  }
+}

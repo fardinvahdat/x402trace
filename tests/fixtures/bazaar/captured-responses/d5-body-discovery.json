@@ -1,0 +1,72 @@
+{
+  "$comment": "D.5 — extensions.bazaar uses BodyDiscoveryExtension shape (info.input/output/schema). Pre-v0.3.2 this was false-positive `implementation_issue`; now it passes the challenge check and verdicts cleanly. Models AsaiShota's test-echo-cdp + 0xdespot's hyperD pattern.",
+  "scenario": "d5-body-discovery",
+  "input": {
+    "serviceUrl": "https://api.fixture-d5.example.test/api/v1/data",
+    "chain": "base-sepolia"
+  },
+  "mocks": {
+    "well-known": {
+      "status": 200,
+      "body": {
+        "name": "Fixture D.5 Body-Discovery Service",
+        "description": "API-style service declaring body-discovery via @x402/extensions",
+        "accepts": [],
+        "extensions": {
+          "bazaar": {
+            "info": {
+              "input": { "type": "object", "properties": { "q": { "type": "string" } } },
+              "output": { "type": "object", "properties": { "result": { "type": "string" } } }
+            },
+            "schema": { "version": "2.11.0" }
+          }
+        }
+      }
+    },
+    "challenge": {
+      "status": 402,
+      "body": {
+        "x402Version": 1,
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "base-sepolia",
+            "maxAmountRequired": "1000",
+            "resource": "https://api.fixture-d5.example.test/api/v1/data",
+            "payTo": "0xd5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5d5",
+            "asset": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+            "maxTimeoutSeconds": 300
+          }
+        ],
+        "extensions": {
+          "bazaar": {
+            "info": {
+              "input": { "type": "object", "properties": { "q": { "type": "string" } } },
+              "output": { "type": "object", "properties": { "result": { "type": "string" } } }
+            },
+            "schema": { "version": "2.11.0" }
+          }
+        }
+      }
+    },
+    "discovery": {
+      "status": 200,
+      "body": {
+        "resources": [
+          {
+            "name": "Fixture D.5 Body-Discovery Service",
+            "description": "API-style service declaring body-discovery via @x402/extensions"
+          }
+        ]
+      }
+    }
+  },
+  "expected": {
+    "verdict": "looks_correct",
+    "exitCode": 0,
+    "facets": {
+      "indexing.indexer_state": "indexed",
+      "propagation.metadata_propagation": "ok"
+    }
+  }
+}
