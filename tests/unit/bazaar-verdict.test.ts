@@ -97,4 +97,72 @@ describe("synthesiseVerdict", () => {
     ]);
     expect(v.kind).toBe("looks_correct");
   });
+
+  // ---- X402-46 (D.3) upstream_stuck composite verdict ----
+
+  function indexingResult(status: CheckResult["status"], indexerState?: string): CheckResult {
+    return {
+      check: "indexing",
+      status,
+      message: `indexing ${status}`,
+      ...(indexerState !== undefined ? { detail: { indexer_state: indexerState } } : {}),
+    };
+  }
+
+  it("returns upstream_stuck (exit 3) when indexing fires info AND indexer_state=processing", () => {
+    const v = synthesiseVerdict([
+      r("well-known", "pass"),
+      r("challenge", "pass"),
+      r("self-payment", "pass"),
+      indexingResult("info", "processing"),
+    ]);
+    expect(v.kind).toBe("upstream_stuck");
+    expect(v.exitCode).toBe(3);
+    if (v.kind === "upstream_stuck") {
+      expect(v.upstreamChecks).toEqual(["indexing"]);
+      expect(v.message).toMatch(/stuck.*processing|indexer.*stuck/i);
+      expect(v.message).toMatch(/#2207/);
+    }
+  });
+
+  it("returns upstream_issue (NOT upstream_stuck) when indexing fires info without indexer_state=processing", () => {
+    const v = synthesiseVerdict([
+      r("well-known", "pass"),
+      r("challenge", "pass"),
+      r("self-payment", "pass"),
+      indexingResult("info", "unknown"),
+    ]);
+    expect(v.kind).toBe("upstream_issue");
+  });
+
+  it("returns upstream_issue when propagation fires info but indexing is pass (no upstream_stuck without processing signal)", () => {
+    const v = synthesiseVerdict([
+      r("well-known", "pass"),
+      r("challenge", "pass"),
+      r("self-payment", "pass"),
+      indexingResult("pass", "indexed"),
+      r("propagation", "info"),
+    ]);
+    expect(v.kind).toBe("upstream_issue");
+  });
+
+  it("returns looks_correct when indexer_state=not_applicable_non_cdp (ADR-004 Pillar 3 WAI rollup)", () => {
+    const v = synthesiseVerdict([
+      r("well-known", "pass"),
+      r("challenge", "pass"),
+      r("self-payment", "pass"),
+      indexingResult("pass", "not_applicable_non_cdp"),
+    ]);
+    expect(v.kind).toBe("looks_correct");
+  });
+
+  it("prefers implementation_issue over upstream_stuck when both signals present", () => {
+    const v = synthesiseVerdict([
+      r("well-known", "fail"),
+      r("challenge", "pass"),
+      r("self-payment", "pass"),
+      indexingResult("info", "processing"),
+    ]);
+    expect(v.kind).toBe("implementation_issue");
+  });
 });

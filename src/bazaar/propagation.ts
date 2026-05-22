@@ -35,9 +35,15 @@
  * to keep the two tickets independently testable.
  */
 
+import { detectFacilitator } from "./facilitator-detect.js";
 import type { CheckResult, WellKnownManifest } from "./types.js";
 
-export type MetadataPropagationStatus = "ok" | "partial" | "missing" | "unknown";
+export type MetadataPropagationStatus =
+  | "ok"
+  | "partial"
+  | "missing"
+  | "unknown"
+  | "not_applicable_non_cdp";
 
 export interface FieldDiff {
   readonly field: string;
@@ -67,6 +73,20 @@ export async function checkPropagation(
   payTo: string | undefined,
   opts: PropagationCheckOptions = {},
 ): Promise<CheckResult> {
+  // X402-46 (D.3) — short-circuit on declared non-CDP facilitator.
+  // Bazaar indexing is CDP-only by design (ADR-004 Pillar 3); the
+  // propagation diff is moot for non-CDP services. Return WAI.
+  if (detectFacilitator(manifest) === "non-cdp") {
+    return {
+      check: "propagation",
+      status: "pass",
+      message: `metadata propagation: not applicable — manifest declares non-CDP facilitator; CDP discovery is not the canonical indexer for this service (ADR-004 Pillar 3)`,
+      detail: {
+        metadata_propagation: "not_applicable_non_cdp" satisfies MetadataPropagationStatus,
+      },
+    };
+  }
+
   if (manifest === undefined || payTo === undefined) {
     return {
       check: "propagation",
