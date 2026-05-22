@@ -193,6 +193,23 @@ Four read-only checks compose into a single bottom-line verdict:
 - Read-only. Never signs, never broadcasts.
 - Each HTTP probe has a 10s default timeout; use `--timeout-ms` to shorten it in CI or when checking flaky endpoints.
 - The opt-in paid-pass mode (`--with-wallet`) is **deferred** — see [ADR-003](./DECISIONS.md). The static-analysis-only checks shipped here cover the dominant Discord pain (Bazaar indexing failure) without needing signing infrastructure.
+- **`--endpoint <paid-url>` (v0.3.2+)** — skip the root `/.well-known/x402` probe and read the 402 challenge directly from a paid route. Use this for services that publish per-route only (the [#2207](https://github.com/x402-foundation/x402/issues/2207) shape — AsaiShota's test-echo-cdp, evanatpizzarobot's TensorFeed, 0xdespot's hyperD).
+
+### JSON API (v0.3.2+) — `--log json` is a public contract
+
+`bazaar-check --log json` emits a JSON envelope downstream consumers can take a runtime dependency on. Per [ADR-004 Pillar 2](./DECISIONS.md), the maintainer commits to:
+
+- **Additive changes** (new optional fields, new optional facets) — ship in MINOR versions
+- **Shape-breaking changes** (renames, removals, type changes, fixed-position reordering) — require a MAJOR version + integrator notice
+- Every change to the `--log json` output is documented in `CHANGELOG.md` under a `### JSON API` subsection
+
+The full contract — envelope shape, per-check `detail` keys, verdict discriminator, regeneration workflow — lives at [`src/bazaar/json-api.md`](./src/bazaar/json-api.md). A frozen exemplar lives at [`tests/fixtures/bazaar/json-api-snapshot.json`](./tests/fixtures/bazaar/json-api-snapshot.json) and is enforced by [`tests/integration/bazaar-check-json-api.test.ts`](./tests/integration/bazaar-check-json-api.test.ts).
+
+```bash
+# Pipe the JSON into your own consumer
+x402trace bazaar-check https://your-service.example.com --log json | jq '.verdict.kind'
+# → "looks_correct"  (or "implementation_issue" / "upstream_issue")
+```
 
 ### Chain selection (Base mainnet, v0.3+)
 

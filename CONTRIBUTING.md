@@ -80,6 +80,29 @@ Not required, but helps when scanning history.
 
 ---
 
+## JSON API discipline (`bazaar-check --log json`)
+
+The `bazaar-check --log json` output is a **public API contract** as of v0.3.2 (ADR-004 Pillar 2). Downstream consumers (mapper integrations, agent filters) take a runtime dependency on the shape.
+
+**Before merging any change that touches the JSON envelope, ask:**
+
+1. Does this rename, remove, or reorder a field? → **shape-breaking**; requires a major-version bump + deprecation cycle. Do NOT merge without discussion.
+2. Does this add a new OPTIONAL field, new check, or new `verdict.kind` value? → **additive**; OK in a minor version. Required steps:
+   - Regenerate the snapshot fixture: see [`src/bazaar/json-api.md`](./src/bazaar/json-api.md#regenerating-the-snapshot-fixture)
+   - Add a `### JSON API` subsection to `CHANGELOG.md` `[Unreleased]` documenting what changed
+3. Did the snapshot test (`tests/integration/bazaar-check-json-api.test.ts`) fail unexpectedly? → the shape changed accidentally. Either fix the code (preferred) OR if the change was intentional, follow step 2.
+
+**PR description self-check:**
+
+- [ ] Did this PR change the `--log json` output shape (any way)?
+- [ ] If yes, is the change additive (new optional field) or shape-breaking (rename/removal)?
+- [ ] If additive: regenerated snapshot fixture + added `### JSON API` CHANGELOG entry?
+- [ ] If shape-breaking: opened a deprecation issue + notified named consumers (TomSmart_ai mapper, etc.)?
+
+See [`src/bazaar/json-api.md`](./src/bazaar/json-api.md) for the full contract.
+
+---
+
 ## Reporting bugs
 
 Open a GitHub issue with:
