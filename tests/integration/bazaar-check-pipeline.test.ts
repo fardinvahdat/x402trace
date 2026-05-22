@@ -81,7 +81,10 @@ function buildFetcher(
     }
     if (url.includes("discovery/resources")) {
       return Promise.resolve(
-        responses.discovery?.() ?? jsonResponse({ resources: [{ id: "r1" }] }),
+        responses.discovery?.() ??
+          // Resource includes name + description so the propagation check
+          // (X402-45 / D.2) diffs as `ok` rather than `missing`.
+          jsonResponse({ resources: [{ name: "Weather API", description: "Forecasts" }] }),
       );
     }
     // Fallback: treat as the challenge URL
@@ -96,7 +99,7 @@ function buildFetcher(
 }
 
 describe("bazaar-check pipeline (hermetic)", () => {
-  it("returns exit 0 + looks_correct when all four checks pass", async () => {
+  it("returns exit 0 + looks_correct when all five checks pass", async () => {
     const stdout = captureStream();
     const stderr = captureStream();
     const code = await runBazaarCheckCommand(
@@ -116,6 +119,7 @@ describe("bazaar-check pipeline (hermetic)", () => {
       "challenge",
       "self-payment",
       "indexing",
+      "propagation",
     ]);
   });
 
