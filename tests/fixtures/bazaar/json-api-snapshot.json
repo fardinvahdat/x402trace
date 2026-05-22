@@ -26,6 +26,15 @@
         "status": "indexed",
         "count": 1
       }
+    },
+    {
+      "check": "propagation",
+      "status": "pass",
+      "message": "metadata propagation: ok — all diffed fields (name, description) match between manifest and CDP discovery for payTo=0x1111111111111111111111111111111111111111",
+      "detail": {
+        "metadata_propagation": "ok",
+        "queryUrl": "https://test-discovery.example.test/v2/x402/discovery/resources?payTo=0x1111111111111111111111111111111111111111"
+      }
     }
   ],
   "verdict": {

@@ -1,10 +1,11 @@
 /**
  * X402-32 — bazaar-check orchestration.
  *
- * Composes the four checks (well-known, challenge, self-payment,
- * indexing) into a single report. Each check runs independently with
- * its own fetcher injection so unit tests stay hermetic and the
- * integration test can wire a single fetcher across all four.
+ * Composes the five checks (well-known, challenge, self-payment,
+ * indexing, propagation) into a single report. Each check runs
+ * independently with its own fetcher injection so unit tests stay
+ * hermetic and the integration test can wire a single fetcher across
+ * all of them.
  *
  * **v0.3 scope cut:** the paid-pass mode (`--with-wallet`) mentioned in
  * the Jira AC is deferred to v0.3.1. The bazaar-check shipped here is
@@ -13,11 +14,17 @@
  * `extensionResponsesMissingRule`) fires only when a future caller
  * actually drives the settle path and surfaces the response headers.
  * See the X402-32 audit log for the rationale.
+ *
+ * **v0.3.2 addition (X402-45 / D.2):** the propagation check diffs
+ * `/.well-known/x402` manifest against CDP discovery's rendered
+ * resource fields, surfacing the @zev pain (manifest correct, indexer
+ * dropped fields, listing renders blank).
  */
 
 import { checkChallenge, fetchChallenge, checkSelfPayment } from "./challenge.js";
 import { checkIndexing } from "./indexing.js";
-import type { BazaarReport, CheckResult } from "./types.js";
+import { checkPropagation } from "./propagation.js";
+import type { BazaarReport, CheckResult, WellKnownManifest } from "./types.js";
 import { synthesiseVerdict } from "./verdict.js";
 import { checkWellKnown } from "./well-known.js";
 
@@ -36,6 +43,13 @@ export {
   type IndexingCheckOptions,
   type IndexingFetcher,
 } from "./indexing.js";
+export {
+  checkPropagation,
+  type MetadataPropagationStatus,
+  type FieldDiff,
+  type PropagationCheckOptions,
+  type PropagationFetcher,
+} from "./propagation.js";
 export { synthesiseVerdict } from "./verdict.js";
 
 export interface BazaarCheckOptions {
@@ -78,6 +92,7 @@ export async function runBazaarCheck(opts: BazaarCheckOptions): Promise<BazaarRe
   const challengeUrl = opts.endpoint ?? opts.serviceUrl;
 
   // 1. Well-known manifest (skipped under --endpoint mode)
+  let manifest: WellKnownManifest | undefined;
   if (useEndpointMode) {
     results.push({
       check: "well-known",
@@ -87,6 +102,7 @@ export async function runBazaarCheck(opts: BazaarCheckOptions): Promise<BazaarRe
   } else {
     const wk = await checkWellKnown(opts.serviceUrl, fetcher);
     results.push(wk.result);
+    manifest = wk.manifest;
   }
 
   // 2. 402 challenge structure (uses endpoint URL when set)
@@ -119,6 +135,17 @@ export async function runBazaarCheck(opts: BazaarCheckOptions): Promise<BazaarRe
       message: "challenge fetch failed; indexing check skipped (no payTo to query against)",
     });
   }
+
+  // 5. Propagation diff (X402-45 / D.2) — diff manifest fields vs
+  // CDP discovery rendered fields. Surfaces @zev / TheRoosters / GM
+  // pain: manifest correct, indexer dropped fields, listing blank.
+  const payToForPropagation = challengeFetch.ok ? challengeFetch.requirements.payTo : undefined;
+  results.push(
+    await checkPropagation(manifest, payToForPropagation, {
+      fetcher,
+      ...(opts.discoveryBaseUrl !== undefined ? { discoveryBaseUrl: opts.discoveryBaseUrl } : {}),
+    }),
+  );
 
   return {
     serviceUrl: opts.serviceUrl,

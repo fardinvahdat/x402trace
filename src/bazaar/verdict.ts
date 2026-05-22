@@ -21,7 +21,7 @@
 import type { BazaarVerdict, CheckResult } from "./types.js";
 
 const IMPLEMENTATION_CHECKS = new Set(["well-known", "challenge", "self-payment"]);
-const UPSTREAM_CHECKS = new Set(["indexing"]);
+const UPSTREAM_CHECKS = new Set(["indexing", "propagation"]);
 
 export function synthesiseVerdict(results: readonly CheckResult[]): BazaarVerdict {
   const implementationFails = results.filter(

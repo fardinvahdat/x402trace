@@ -79,7 +79,16 @@ function deterministicFetcher(): typeof fetch {
       );
     }
     if (url.includes("discovery/resources")) {
-      return Promise.resolve(jsonResponse({ resources: [{ id: "r1" }] }));
+      return Promise.resolve(
+        jsonResponse({
+          resources: [
+            {
+              name: "Snapshot API",
+              description: "Frozen exemplar for ADR-004 Pillar 2",
+            },
+          ],
+        }),
+      );
     }
     // Challenge URL
     return Promise.resolve(
@@ -184,11 +193,17 @@ describe("bazaar-check JSON API stability (X402-44, ADR-004 Pillar 2)", () => {
     expect(liveJson.verdict["exitCode"]).toBe(snapshot.verdict["exitCode"]);
   });
 
-  it("all four canonical check names are present (catches accidental removal of a check)", () => {
+  it("all five canonical check names are present in fixed order (catches removal / reordering of a check)", () => {
     const snapshot = loadSnapshot() as {
       results: ReadonlyArray<{ check: string }>;
     };
     const checkNames = snapshot.results.map((r) => r.check);
-    expect(checkNames).toEqual(["well-known", "challenge", "self-payment", "indexing"]);
+    expect(checkNames).toEqual([
+      "well-known",
+      "challenge",
+      "self-payment",
+      "indexing",
+      "propagation",
+    ]);
   });
 });
