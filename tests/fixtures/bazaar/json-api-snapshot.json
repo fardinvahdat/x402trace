@@ -24,7 +24,8 @@
       "detail": {
         "queryUrl": "https://test-discovery.example.test/v2/x402/discovery/resources?payTo=0x1111111111111111111111111111111111111111",
         "status": "indexed",
-        "count": 1
+        "count": 1,
+        "indexer_state": "indexed"
       }
     },
     {

@@ -171,6 +171,48 @@ describe("checkPropagation — unknown path (defensive defaults)", () => {
   });
 });
 
+describe("checkPropagation — not_applicable_non_cdp (X402-46 / ADR-004 Pillar 3)", () => {
+  it("short-circuits to not_applicable_non_cdp when manifest declares non-CDP facilitator", async () => {
+    // Fetcher should NOT be called — short-circuit fires before the network probe.
+    let fetcherCalled = false;
+    const fetcher = mockFetch(() => {
+      fetcherCalled = true;
+      return jsonResponse({ resources: [] });
+    });
+    const r = await checkPropagation(
+      {
+        name: "X",
+        description: "Y",
+        extensions: { bazaar: { facilitator: "x402-rs" } },
+      },
+      PAY_TO,
+      { discoveryBaseUrl: TEST_DISCOVERY, fetcher },
+    );
+    expect(r.status).toBe("pass");
+    expect(r.detail?.metadata_propagation).toBe("not_applicable_non_cdp");
+    expect(r.message).toMatch(/not applicable|non-CDP|ADR-004 Pillar 3/);
+    expect(fetcherCalled).toBe(false);
+  });
+
+  it("does NOT short-circuit when manifest declares CDP — proceeds with diff", async () => {
+    const fetcher = mockFetch(() =>
+      jsonResponse({
+        resources: [{ name: "X", description: "Y" }],
+      }),
+    );
+    const r = await checkPropagation(
+      {
+        name: "X",
+        description: "Y",
+        extensions: { bazaar: { facilitator: "coinbase-cdp" } },
+      },
+      PAY_TO,
+      { discoveryBaseUrl: TEST_DISCOVERY, fetcher },
+    );
+    expect(r.detail?.metadata_propagation).toBe("ok");
+  });
+});
+
 describe("checkPropagation — edge cases", () => {
   it("treats whitespace-only manifest values as missing (matches well-known's trim() semantics)", async () => {
     const manifestWithWhitespace = { name: "   ", description: "ok" };

@@ -120,12 +120,15 @@ export async function runBazaarCheck(opts: BazaarCheckOptions): Promise<BazaarRe
     });
   }
 
-  // 4. Indexing query (CDP discovery) — only if we have a payTo from the challenge
+  // 4. Indexing query (CDP discovery) — only if we have a payTo from the challenge.
+  //    X402-46 (D.3): manifest is passed for facilitator detection (short-circuits to
+  //    `not_applicable_non_cdp` when the operator declares a non-CDP facilitator).
   if (challengeFetch.ok) {
     results.push(
       await checkIndexing(challengeFetch.requirements.payTo, {
         fetcher,
         ...(opts.discoveryBaseUrl !== undefined ? { discoveryBaseUrl: opts.discoveryBaseUrl } : {}),
+        ...(manifest !== undefined ? { manifest } : {}),
       }),
     );
   } else {

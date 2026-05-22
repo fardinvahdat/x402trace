@@ -87,4 +87,92 @@ describe("checkIndexing", () => {
     });
     expect(observed.startsWith("https://my-test-facilitator.example")).toBe(true);
   });
+
+  // ---- X402-46 (D.3) indexer_state facet ----
+
+  describe("indexer_state facet", () => {
+    it("emits indexer_state=indexed on the pass path", async () => {
+      const fetcher = mockFetch(() => jsonResponse({ resources: [{ id: "r1" }] }));
+      const r = await checkIndexing(PAY_TO, { fetcher });
+      expect(r.detail?.indexer_state).toBe("indexed");
+    });
+
+    it("emits indexer_state=processing on empty resources (the #2207 stuck pattern)", async () => {
+      const fetcher = mockFetch(() => jsonResponse({ resources: [] }));
+      const r = await checkIndexing(PAY_TO, { fetcher });
+      expect(r.detail?.indexer_state).toBe("processing");
+    });
+
+    it("emits indexer_state=processing on 404 (also #2207 stuck pattern)", async () => {
+      const fetcher = mockFetch(() => new Response("", { status: 404 }));
+      const r = await checkIndexing(PAY_TO, { fetcher });
+      expect(r.detail?.indexer_state).toBe("processing");
+    });
+
+    it("emits indexer_state=unknown on 5xx / non-JSON / network error", async () => {
+      const fetcher5xx = mockFetch(() => new Response("err", { status: 503 }));
+      const r5xx = await checkIndexing(PAY_TO, { fetcher: fetcher5xx });
+      expect(r5xx.detail?.indexer_state).toBe("unknown");
+
+      const fetcherNetErr = ((_url: string) =>
+        Promise.reject(new Error("ENOTFOUND"))) as typeof fetch;
+      const rNetErr = await checkIndexing(PAY_TO, { fetcher: fetcherNetErr });
+      expect(rNetErr.detail?.indexer_state).toBe("unknown");
+    });
+  });
+
+  // ---- X402-46 (D.3) not_applicable_non_cdp short-circuit ----
+
+  describe("not_applicable_non_cdp (manifest-claim)", () => {
+    it("returns pass + indexer_state=not_applicable_non_cdp when manifest declares non-CDP facilitator", async () => {
+      // Fetcher should NOT be called — short-circuit fires before the network probe.
+      let fetcherCalled = false;
+      const fetcher = mockFetch(() => {
+        fetcherCalled = true;
+        return jsonResponse({ resources: [] });
+      });
+      const r = await checkIndexing(PAY_TO, {
+        fetcher,
+        manifest: {
+          name: "X",
+          description: "Y",
+          extensions: { bazaar: { facilitator: "x402-rs" } },
+        },
+      });
+      expect(r.status).toBe("pass");
+      expect(r.detail?.indexer_state).toBe("not_applicable_non_cdp");
+      expect(r.message).toMatch(/non-CDP|ADR-004 Pillar 3/);
+      expect(fetcherCalled).toBe(false);
+    });
+
+    it("does NOT short-circuit when manifest declares CDP — proceeds with normal query", async () => {
+      let fetcherCalled = false;
+      const fetcher = mockFetch(() => {
+        fetcherCalled = true;
+        return jsonResponse({ resources: [{ id: "r1" }] });
+      });
+      const r = await checkIndexing(PAY_TO, {
+        fetcher,
+        manifest: {
+          name: "X",
+          description: "Y",
+          extensions: { bazaar: { facilitator: "coinbase-cdp" } },
+        },
+      });
+      expect(r.status).toBe("pass");
+      expect(r.detail?.indexer_state).toBe("indexed");
+      expect(fetcherCalled).toBe(true);
+    });
+
+    it("does NOT short-circuit when manifest is undefined — proceeds with normal query (preserves --endpoint mode)", async () => {
+      let fetcherCalled = false;
+      const fetcher = mockFetch(() => {
+        fetcherCalled = true;
+        return jsonResponse({ resources: [] });
+      });
+      const r = await checkIndexing(PAY_TO, { fetcher });
+      expect(r.detail?.indexer_state).toBe("processing");
+      expect(fetcherCalled).toBe(true);
+    });
+  });
 });
