@@ -21,7 +21,13 @@ import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 const MAX_UNPACKED_BYTES = 400 * 1024;
-const MAX_FILES = 100;
+// v0.3.0: 96 → v0.3.1 + PR #69 fixtures: 100 → v0.3.2 cycle adds (json-api
+// stability + D.5 extensions-bazaar + D.2 propagation + D.3 facilitator-
+// detect): 102. Raised to 110 with breathing room for X402-47 fixture
+// consumption + future v0.3.x facets. Reduce again when the next major
+// surface cleanup happens (e.g., extracting the legacy `detail.status`
+// field on indexing).
+const MAX_FILES = 110;
 const DIST_DIR = "dist";
 
 if (!existsSync(DIST_DIR)) {
