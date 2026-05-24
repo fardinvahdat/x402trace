@@ -1,3 +1,6 @@
 # x402trace donate address — USDC or ETH on Base / Ethereum mainnet.
 # Same address resolves on both chains; see README's Donate section.
-custom: ["https://basescan.org/address/0x180671C40c5e28Ba0cF88D57B761A8ccE97710De"]
+# Drips Network + Giveth project URLs to be appended as additional custom
+# entries when those project profiles go live (GitHub Sponsor button supports
+# up to 4 URLs in custom: array).
+custom: ["https://basescan.org/address/0xe922Cc1D44C69bDEc8581Cc9Fd28bab8f59478CC"]
