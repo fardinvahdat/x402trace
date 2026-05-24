@@ -9,6 +9,12 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Documentation
+
+- Clarify Bazaar contributor discipline for captured-response fixtures,
+  discovery-variant triage, and no-payment-required testing in
+  `CONTRIBUTING.md`.
+
 ## [0.3.2] — 2026-05-23
 
 The metadata-propagation release. v0.3.0 + v0.3.1 answered _"is my Bazaar / agentic.market integration shaped correctly?"_; v0.3.2 sharpens the upstream-attribution side of the same question — _"if my manifest looks right, why isn't my listing rendering?"_ — with four new verdict pathways, a per-route probe mode, variant-aware extension validation, a published JSON API contract, and end-to-end fixture infrastructure. Seven Jira tickets ([X402-41](https://vahdatfardin.atlassian.net/browse/X402-41) → [X402-47](https://vahdatfardin.atlassian.net/browse/X402-47)) ran through the strict 6-stage audit gate; all merged to main 2026-05-21 → 2026-05-23. ADR-004 codifies the three pillars (verdict semantics + JSON API stability + facilitator-aware attribution). No breaking changes to v0.3.0/0.3.1 surface — `--log json` additions are strictly additive per the new versioning rule.
