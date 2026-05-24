@@ -329,6 +329,17 @@ If x402trace saved you time and you want to send something back, the maintainer 
 
 Verify on [Basescan](https://basescan.org/address/0x180671C40c5e28Ba0cF88D57B761A8ccE97710De) or [Etherscan](https://etherscan.io/address/0x180671C40c5e28Ba0cF88D57B761A8ccE97710De). All amounts welcome — donations fund maintainer time on the next release (currently: v0.3.2 metadata-propagation sub-checks per the [v0.3.1 release notes](https://github.com/fardinvahdat/x402trace/releases/tag/v0.3.1)).
 
+## Paid audits
+
+Maintainer-side reviews available for teams shipping x402-paid services at scale:
+
+- **Listing-readiness sweep** — `bazaar-check` across N endpoints from your catalog with a verdict distribution + per-URL fix recommendations
+- **Release smoke** — pre-ship verification packet (Markdown executive summary + JSONL log + suggested fixes)
+- **Custom diagnostic** — one-shot custom check + reproduction harness for a service-specific failure mode
+- **Fixture contribution** — closure-row JSON envelopes packaged as captured-response fixtures for the regression bed
+
+Payable in USDC on Base. Reach out via [GitHub Issue](https://github.com/fardinvahdat/x402trace/issues/new) or Coinbase Developer Discord DM with scope; typical turnaround 48-72h.
+
 ## Acknowledgments
 
 External contributors who've shaped x402trace:
