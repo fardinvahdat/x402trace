@@ -99,6 +99,67 @@ The `bazaar-check --log json` output is a **public API contract** as of v0.3.2 (
 - [ ] If additive: regenerated snapshot fixture + added `### JSON API` CHANGELOG entry?
 - [ ] If shape-breaking: opened a deprecation issue + notified named consumers (TomSmart_ai mapper, etc.)?
 
+### Captured-response fixture updates
+
+Captured-response fixtures are for behavior that should be replayable without
+touching a live paid endpoint. Treat each fixture as a small contract:
+
+- Put the fixture under `tests/fixtures/bazaar/captured-responses/`.
+- Include the target `serviceUrl`, `chain`, mocked `well-known`, `challenge`,
+  and discovery responses needed to exercise the path.
+- Capture the HTTP status, response body, and only the headers that affect the
+  x402/Bazaar decision. Redact secrets, signatures, wallet payloads, auth
+  headers, private customer data, and anything that would require a real payment
+  to reproduce.
+- State the expected `verdict`, `exitCode`, and any structured facets the test
+  should assert, for example `indexing.indexer_state` or
+  `propagation.metadata_propagation`.
+- Re-run `tests/integration/bazaar-check-captured-responses.test.ts`; the
+  harness discovers fixture files in that directory. Do not add a captured
+  fixture that is not consumed by the harness or by a focused regression test.
+
+The public JSON envelope is locked by
+`tests/fixtures/bazaar/json-api-snapshot.json` and
+`tests/integration/bazaar-check-json-api.test.ts`. The human contract lives in
+[`src/bazaar/json-api.md`](./src/bazaar/json-api.md). If a fixture update
+exposes an intentional JSON shape change, update all three together and add the
+required `### JSON API` changelog entry.
+
+### Bazaar discovery variant triage
+
+When a report involves `extensions.bazaar`, decide which discovery shape is in
+play before writing remediation copy:
+
+1. **Body-discovery path**: the payload has BodyDiscovery-style fields such as
+   `extensions.bazaar.info.input`, `extensions.bazaar.info.output`, and
+   `extensions.bazaar.schema`. Missing-field guidance should name those fields.
+   Do not tell these services to add MCP-style `name`/`description` when the
+   detected variant is body-discovery.
+2. **MCP-discovery path**: the payload does not have a complete body-discovery
+   shape and is being validated as MCP-style discovery metadata. Missing-field
+   guidance should stay on the MCP-style Bazaar metadata fields reported by the
+   validator.
+3. **Unknown path**: the shape cannot be classified cleanly. Preserve the raw
+   `detail.variant: "unknown"` signal, avoid over-specific remediation copy, and
+   add or adjust a fixture before changing user-facing advice.
+
+The variant detector is in `src/bazaar/extensions-bazaar.ts`; challenge and
+well-known checks consume that helper so the two surfaces stay aligned.
+
+### No-payment-required test discipline
+
+Default contributor proofs must be no-payment:
+
+- Use public no-payment 402 probes, captured fixtures, mocked fetchers, or the
+  local Base Sepolia e2e path documented in [TESTING.md](./TESTING.md).
+- Do not send `X-PAYMENT`, payment signatures, private keys, wallet secrets, or
+  live paid calls in default tests, CI, screenshots, or PR comments.
+- If a change truly needs settlement behavior, keep it in the explicit testnet
+  e2e path and document the command, chain, wallet funding source, and absence
+  of mainnet spend in the PR body.
+- If you only inspected public unauthenticated `402 Payment Required`
+  challenges, say that directly in manual verification.
+
 See [`src/bazaar/json-api.md`](./src/bazaar/json-api.md) for the full contract.
 
 ---
