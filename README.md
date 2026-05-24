@@ -329,6 +329,8 @@ If x402trace saved you time and you want to send something back, the maintainer 
 
 Verify on [Basescan](https://basescan.org/address/0xe922Cc1D44C69bDEc8581Cc9Fd28bab8f59478CC) or [Etherscan](https://etherscan.io/address/0xe922Cc1D44C69bDEc8581Cc9Fd28bab8f59478CC). All amounts welcome — donations fund maintainer time on the next release (currently: v0.3.2.1 fast-follow + v0.3.3 trust-taxonomy slate per the [v0.3.2 release notes](https://github.com/fardinvahdat/x402trace/releases/tag/v0.3.2)).
 
+The project is also listed on [Giveth](https://giveth.io/project/x402trace) for donors who prefer a platform-side experience — Giveth supports Base, Ethereum, Optimism, and Polygon, with optional GIVbacks rewards for donors. Donations through either rail land in the same wallet.
+
 ## Paid audits
 
 Maintainer-side reviews available for teams shipping x402-paid services at scale:
