@@ -143,7 +143,7 @@ describe("bazaar-check pipeline (hermetic)", () => {
     expect(out.verdict.failedChecks).toContain("well-known");
   });
 
-  it("returns exit 3 + upstream_issue when only indexing surfaces an info signal (the #2207 pattern)", async () => {
+  it("returns exit 3 + upstream_stuck when indexing surfaces processing (the #2207 pattern, X402-46/D.3)", async () => {
     const stdout = captureStream();
     const stderr = captureStream();
     const code = await runBazaarCheckCommand(
@@ -159,8 +159,12 @@ describe("bazaar-check pipeline (hermetic)", () => {
     );
     expect(code).toBe(3);
     const out = JSON.parse(stdout.buf.join(""));
-    expect(out.verdict.kind).toBe("upstream_issue");
+    expect(out.verdict.kind).toBe("upstream_stuck");
     expect(out.verdict.message).toMatch(/#2207/);
+    // Confirm the indexer_state facet is present and carrying the
+    // processing signal that drove the verdict choice.
+    const indexing = out.results.find((r: { check: string }) => r.check === "indexing");
+    expect(indexing.detail.indexer_state).toBe("processing");
   });
 
   it("returns exit 2 + implementation_issue when extensions.bazaar is missing", async () => {

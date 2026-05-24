@@ -88,6 +88,8 @@ npm install -g x402trace      # or `pnpm add -g x402trace`, `npx x402trace --hel
 
 Requires Node ≥ 20.
 
+> **Node 22 + `npx` users:** if `npx x402trace` hangs with no output, install globally instead (`npm i -g x402trace`) or pin to Node 20 (`nvm use 20`). This is a known Node 22 ESM-resolver interaction with a transitive dep that anchor-x402 / x402-fetch consumers ride on; `npm i -g` and `pnpm add -g` are not affected. Tracked at [X402-40](https://vahdatfardin.atlassian.net/browse/X402-40).
+
 ## How it works
 
 ```
@@ -285,15 +287,16 @@ Yes — `x402trace validate <wallet> <service-url>` is read-only. It fetches the
 Yes — Base mainnet shipped in v0.3.0 per [ADR-003](./DECISIONS.md#adr-003-v03-feature-pick--bazaar-check-headline--5-facilitator-aware-diagnose-rules--validate---diff--base-mainnet-autonomous-execution-under-strict-6-stage-audit-gate). Pass `--chain base` (or set `BASE_CHAIN_ID=base`) to switch. You must supply your own mainnet RPC URL via `--rpc-url` or `BASE_RPC_URL` env — x402trace ships no default mainnet endpoint (CLAUDE.md hard rule #2). Default stays `base-sepolia` for backward compatibility. See [Chain selection (Base mainnet, v0.3+)](#chain-selection-base-mainnet-v03) above for examples and safety notes.
 
 **Q: My supply-chain scanner shows transitive alerts on dependencies. Are these in x402trace?**
-No. As of v0.3.1 the runtime tree is `commander` + `dotenv` + `viem` + `x402` only — the published `dist/` imports nothing else. The test-tooling deps (`hono`, `x402-fetch`, `x402-hono`) are `devDependencies` and are not installed by `npm i x402trace`. Any wallet-SDK / WalletConnect / MetaMask transitives a scanner shows on the package come in via `viem` (read-only chain client). See [SECURITY.md](./SECURITY.md) to report a vulnerability in x402trace itself.
+No. As of v0.3.2 the runtime tree is `commander` + `dotenv` + `viem` + `x402` only — the published `dist/` imports nothing else (enforced by `pnpm check:publish-surface` in CI). The test-tooling deps (`hono`, `x402-fetch`, `x402-hono`) are `devDependencies` and are not installed by `npm i x402trace`. Any wallet-SDK / WalletConnect / MetaMask transitives a scanner shows on the package come in via `viem` (read-only chain client). See [SECURITY.md](./SECURITY.md) to report a vulnerability in x402trace itself.
 
 ## Roadmap
 
 - **v0.1.0** (2026-05-12) — local proxy + timeout reconciliation. [ADR-001](./DECISIONS.md#adr-001-v01-wedge).
 - **v0.2.0 — v0.2.3** (2026-05-12 → 2026-05-13) — `validate` + `explain` on a shared diagnostic rule engine. [ADR-002](./DECISIONS.md#adr-002-v02-feature-pick--validate-primary--explain-paired).
 - **v0.3.0** (2026-05-17) — `bazaar-check` (headline), `validate --diff` cross-facilitator, 5 facilitator-aware diagnose rules, Base mainnet support, `versions` SDK-skew audit. [ADR-003](./DECISIONS.md#adr-003-v03-feature-pick--bazaar-check-headline--5-facilitator-aware-diagnose-rules--validate---diff--base-mainnet-autonomous-execution-under-strict-6-stage-audit-gate).
-- **v0.3.1** (current, 2026-05-20) — hotfix: v2 challenge body parsing ([#66](https://github.com/fardinvahdat/x402trace/pull/66) by @hypeprinter007-stack — first external contributor), `bazaar-check` HTTP probe timeouts ([#67](https://github.com/fardinvahdat/x402trace/pull/67) by @peterxing), npm package description audit-gap fix.
-- **v0.3.2** (planned) — metadata-propagation sub-checks for `bazaar-check`: D.1 manifest hygiene (empty-string detection), D.2 propagation diff (manifest vs indexer render), D.3 indexer-state probe (catches stuck `processing` records). Candidate: `facilitator-status` if a 2nd CDP outage cluster lands.
+- **v0.3.1** (2026-05-20) — hotfix: v2 challenge body parsing ([#66](https://github.com/fardinvahdat/x402trace/pull/66) by @hypeprinter007-stack — first external contributor), `bazaar-check` HTTP probe timeouts ([#67](https://github.com/fardinvahdat/x402trace/pull/67) by @peterxing), npm package description audit-gap fix.
+- **v0.3.2** (current, 2026-05-23) — metadata-propagation cut. D.2 propagation diff (manifest vs CDP discovery render — @zev's api.lastlookdata.com pattern), D.3 indexer-state probe + new `upstream_stuck` verdict (Max's polyodds.bet pattern + the canonical [#2207](https://github.com/x402-foundation/x402/issues/2207) cluster), D.4 `--endpoint <paid-url>` per-route probe (AsaiShota / evanatpizzarobot / 0xdespot's per-route services), D.5 variant-aware `extensions.bazaar` (fixes the [#72](https://github.com/fardinvahdat/x402trace/issues/72) Body-discovery false-positive), public JSON API contract + snapshot tests, facilitator-aware verdict semantics. [ADR-004](./DECISIONS.md). 511 tests.
+- **v0.3.3+ planned** — TomSmart cdp-mature + 4 other contributor fixtures wired into the captured-responses harness; `processing_fresh` vs `processing_stale` distinction on D.3 (operator-supplied settle-timestamp); `facilitator-status` if a 2nd CDP outage cluster lands.
 - **Deferred (kept, not killed)** — ERC-6492 Smart Wallet kind, `extensions.diagnostic` decoder (gated on [#1875](https://github.com/x402-foundation/x402/pull/1875)), `--watch` daemon, reconciliation actions (webhook / auto-retry), hosted SaaS, multi-chain non-Base, `bazaar-check --with-wallet` paid-pass mode. See [SPEC.md § 5b "v0.3.2+ deferred"](./SPEC.md).
 
 ## How x402trace compares
@@ -330,9 +333,15 @@ Verify on [Basescan](https://basescan.org/address/0x180671C40c5e28Ba0cF88D57B761
 
 External contributors who've shaped x402trace:
 
-- [@hypeprinter007-stack](https://github.com/hypeprinter007-stack) — first external contributor; fixed v2 challenge body parsing ([#65](https://github.com/fardinvahdat/x402trace/issues/65), [#66](https://github.com/fardinvahdat/x402trace/pull/66))
+- [@hypeprinter007-stack](https://github.com/hypeprinter007-stack) — first external contributor; fixed v2 challenge body parsing ([#65](https://github.com/fardinvahdat/x402trace/issues/65), [#66](https://github.com/fardinvahdat/x402trace/pull/66)); manifest-hygiene empty-string detection ([#70](https://github.com/fardinvahdat/x402trace/pull/70))
 - [@peterxing](https://github.com/peterxing) — `bazaar-check` HTTP probe timeouts ([#67](https://github.com/fardinvahdat/x402trace/pull/67))
-- [@TomSmart_ai](https://github.com/TomSmart_ai) — first production-scale validation against a 19-endpoint mapper catalog (Coinbase Developer Discord, 2026-05-20); coined the "listing-readiness gap" framing for `bazaar-check`
+- [@TomSmart_ai](https://github.com/TomSmart_ai) — first production-scale validation against a 19-endpoint mapper catalog (Coinbase Developer Discord, 2026-05-20); coined the "listing-readiness gap" framing for `bazaar-check`; named integrator for the v0.3.2 JSON API contract
+- [@AsaiShota](https://github.com/AsaiShota) — origin of [#72](https://github.com/fardinvahdat/x402trace/issues/72) (Body-discovery extension shape, drove D.5 / X402-43) + [#2207](https://github.com/x402-foundation/x402/issues/2207) per-route services corroboration (drove D.4 / X402-42)
+- [@evanatpizzarobot](https://github.com/evanatpizzarobot) — second-voice corroboration on D.4 per-route shape ([#2207](https://github.com/x402-foundation/x402/issues/2207), TensorFeed)
+- [@0xdespot](https://github.com/0xdespot) — D.4 third-voice corroboration (hyperD.ai) + D.5 BodyDiscoveryExtension corroboration + bucket taxonomy that informs the D.3 `indexer_state` enum on [#2207](https://github.com/x402-foundation/x402/issues/2207)
+- @Cryptor + @Ferj (Coinbase Developer Discord, 2026-05-21) — CDP-only Bazaar-indexing clarification that anchors ADR-004 Pillar 3 (facilitator-aware verdict attribution)
+- @zev (Discord) — D.2 propagation-diff pain pattern (api.lastlookdata.com)
+- Max (Discord) — D.3 indexer-state probe pain pattern (polyodds.bet)
 
 Per-release credit lives in the [CHANGELOG](./CHANGELOG.md).
 

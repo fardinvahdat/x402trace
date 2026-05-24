@@ -1,7 +1,7 @@
 {
   "name": "x402trace",
-  "version": "0.3.1",
-  "description": "Local x402 debugger CLI for Base. bazaar-check, validate --diff facilitators, explain offline, reconcile timeouts. Read-only. Sepolia + mainnet.",
+  "version": "0.3.2",
+  "description": "Local x402 debugger CLI for Base. bazaar-check (5 checks + propagation diff + indexer-state, --endpoint per-route, variant-aware extensions.bazaar), validate --diff facilitators, explain offline, reconcile timeouts. Read-only. Sepolia + mainnet. Public JSON API.",
   "type": "module",
   "bin": {
     "x402trace": "./dist/cli.js"

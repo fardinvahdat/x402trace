@@ -75,6 +75,21 @@ export type BazaarVerdict =
       /** Exit 3. */
       readonly exitCode: 3;
       readonly upstreamChecks: readonly string[];
+    }
+  | {
+      /**
+       * X402-46 (D.3) — facilitator settled, but downstream indexer
+       * hasn't advanced past `processing`. Distinct from generic
+       * `upstream_issue` because the root cause is known: the indexer
+       * queue is stuck. Per ADR-004 Pillar 1, rolls up to exit code 3
+       * (preserves CI contract); verdict prose + JSON facets carry
+       * the granularity.
+       */
+      readonly kind: "upstream_stuck";
+      readonly message: string;
+      /** Exit 3 (same as `upstream_issue`). */
+      readonly exitCode: 3;
+      readonly upstreamChecks: readonly string[];
     };
 
 /**
@@ -119,3 +134,27 @@ export type ChallengeFetchResult =
  * spec drift in the response shape by returning a coarse status.
  */
 export type IndexingStatus = "indexed" | "processing" | "not_found" | "error";
+
+/**
+ * X402-46 (D.3) — verdict facet on the indexing check carrying the
+ * canonical indexer-state classification. Surfaced as
+ * `detail.indexer_state` on the indexing check's CheckResult.
+ *
+ *   - `indexed` — CDP discovery returns ≥1 resource for the payTo
+ *   - `processing` — discovery returned 404 or empty resources;
+ *     downstream indexer hasn't surfaced the service yet (Max's case,
+ *     the canonical #2207 cluster)
+ *   - `unknown` — couldn't determine (HTTP error, non-JSON body,
+ *     network failure, or no payTo extractable)
+ *   - `not_applicable_non_cdp` — operator declared a non-CDP
+ *     facilitator in their manifest; Bazaar indexing is CDP-only by
+ *     design (Cryptor + Ferj correction 2026-05-21), so the absence
+ *     is working-as-intended (per ADR-004 Pillar 3). Rolls up to
+ *     `looks_correct`, NOT `upstream_issue`.
+ *
+ * v0.3.3+ deferred: `processing_fresh` vs `processing_stale`
+ * distinction (requires settle-timestamp data x402trace doesn't
+ * collect today without driving live settles or accepting
+ * operator-supplied evidence via a future flag).
+ */
+export type IndexerState = "indexed" | "processing" | "unknown" | "not_applicable_non_cdp";
