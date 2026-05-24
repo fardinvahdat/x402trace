@@ -325,9 +325,9 @@ Personal project. PRs and bug reports welcome. Read in this order:
 
 If x402trace saved you time and you want to send something back, the maintainer accepts USDC or ETH on Base or Ethereum mainnet:
 
-**`0x180671C40c5e28Ba0cF88D57B761A8ccE97710De`**
+**`0xe922Cc1D44C69bDEc8581Cc9Fd28bab8f59478CC`**
 
-Verify on [Basescan](https://basescan.org/address/0x180671C40c5e28Ba0cF88D57B761A8ccE97710De) or [Etherscan](https://etherscan.io/address/0x180671C40c5e28Ba0cF88D57B761A8ccE97710De). All amounts welcome — donations fund maintainer time on the next release (currently: v0.3.2 metadata-propagation sub-checks per the [v0.3.1 release notes](https://github.com/fardinvahdat/x402trace/releases/tag/v0.3.1)).
+Verify on [Basescan](https://basescan.org/address/0xe922Cc1D44C69bDEc8581Cc9Fd28bab8f59478CC) or [Etherscan](https://etherscan.io/address/0xe922Cc1D44C69bDEc8581Cc9Fd28bab8f59478CC). All amounts welcome — donations fund maintainer time on the next release (currently: v0.3.2.1 fast-follow + v0.3.3 trust-taxonomy slate per the [v0.3.2 release notes](https://github.com/fardinvahdat/x402trace/releases/tag/v0.3.2)).
 
 ## Paid audits
 
