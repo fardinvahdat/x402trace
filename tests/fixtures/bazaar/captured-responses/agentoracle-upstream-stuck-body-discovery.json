@@ -772,9 +772,7 @@
     "verdict": "upstream_stuck",
     "exitCode": 3,
     "facets": {
-      "indexing.indexer_state": "processing",
-      "challenge.variant": "body-discovery",
-      "well-known.variant": "body-discovery"
+      "indexing.indexer_state": "processing"
     }
   }
 }
