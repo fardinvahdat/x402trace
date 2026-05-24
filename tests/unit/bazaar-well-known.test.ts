@@ -219,6 +219,8 @@ describe("checkWellKnown", () => {
       expect(result.detail?.issues).toEqual(
         expect.arrayContaining([expect.stringMatching(/extensions\.bazaar\.info\.input/)]),
       );
+      expect(result.fix).toContain("extensions.bazaar.info.input");
+      expect(result.fix).not.toContain("extensions.bazaar.{name, description}");
     });
 
     it("fails when body-discovery is missing schema (whole schema key non-object)", async () => {

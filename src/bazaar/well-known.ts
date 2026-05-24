@@ -149,12 +149,16 @@ export async function checkWellKnown(
   }
 
   if (issues.length > 0) {
+    const bazaarFix =
+      bazaarVariant === "body-discovery"
+        ? "Services opted into bazaar body-discovery need extensions.bazaar.info.input, extensions.bazaar.info.output, and extensions.bazaar.schema as non-null objects."
+        : `Services opted into bazaar discovery (extensions.bazaar present, or discovery_extension: "bazaar") additionally need extensions.bazaar.{name, description} as non-empty strings — empty strings render as blank listing cards on the mapper.`;
     return {
       result: {
         check: "well-known",
         status: "fail",
         message: `manifest at ${url} has ${issues.length} issue(s): ${issues.join(", ")}`,
-        fix: `fix each: every Bazaar-listable service needs a top-level name (string), description (string), and accepts (array of payment requirement objects). Services opted into bazaar discovery (extensions.bazaar present, or discovery_extension: "bazaar") additionally need extensions.bazaar.{name, description} as non-empty strings — empty strings render as blank listing cards on the mapper.`,
+        fix: `fix each: every Bazaar-listable service needs a top-level name (string), description (string), and accepts (array of payment requirement objects). ${bazaarFix}`,
         detail: { issues },
       },
       manifest,
@@ -183,9 +187,7 @@ export async function checkWellKnown(
  * object. Returns `undefined` when absent, null, or a non-object — those
  * cases are handled by the caller's opt-in branch.
  */
-function readBazaarExtension(
-  manifest: WellKnownManifest,
-): { name?: unknown; description?: unknown } | undefined {
+function readBazaarExtension(manifest: WellKnownManifest): Record<string, unknown> | undefined {
   const ext = manifest.extensions;
   if (typeof ext !== "object" || ext === null) {
     return undefined;
@@ -194,5 +196,5 @@ function readBazaarExtension(
   if (typeof bazaar !== "object" || bazaar === null) {
     return undefined;
   }
-  return bazaar as { name?: unknown; description?: unknown };
+  return bazaar as Record<string, unknown>;
 }
