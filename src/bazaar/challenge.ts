@@ -29,9 +29,8 @@ import type { CheckResult, ChallengeFetchResult } from "./types.js";
 export interface ChallengeFetchOptions {
   /**
    * When true, also validate that the 402 body contains
-   * `extensions.bazaar` with the minimum fields `name` and
-   * `description`. Default `true` — bazaar-check is, by name, about
-   * bazaar.
+   * `extensions.bazaar` in either supported discovery variant.
+   * Default `true` — bazaar-check is, by name, about bazaar.
    */
   readonly expectBazaar?: boolean;
 }
