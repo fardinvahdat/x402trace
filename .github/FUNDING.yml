@@ -1,6 +1,9 @@
-# x402trace donate address — USDC or ETH on Base / Ethereum mainnet.
-# Same address resolves on both chains; see README's Donate section.
-# Drips Network + Giveth project URLs to be appended as additional custom
-# entries when those project profiles go live (GitHub Sponsor button supports
-# up to 4 URLs in custom: array).
-custom: ["https://basescan.org/address/0xe922Cc1D44C69bDEc8581Cc9Fd28bab8f59478CC"]
+# x402trace donate options:
+# - Direct wallet (Basescan link verifies the address): USDC or ETH on Base
+#   or Ethereum mainnet, same EOA across both chains.
+# - Giveth project page: crypto-native donation platform; supports Base,
+#   Ethereum, Optimism, and Polygon; optional GIVbacks rewards for donors.
+# Drips Network registration is deferred (platform-side fee gate).
+custom:
+  - https://basescan.org/address/0xe922Cc1D44C69bDEc8581Cc9Fd28bab8f59478CC
+  - https://giveth.io/project/x402trace
