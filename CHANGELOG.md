@@ -9,11 +9,54 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.2.1] — 2026-05-27
+
+Fast-follow on v0.3.2. Documentation polish, a body-discovery remediation copy fix from a first-time contributor, a hybrid D.3+D.5 captured-response fixture from @TKCollective, paid-audits + funding-rail surface additions on README, and ADR-007 recording v0.3.3 K (payment-payload echo gap rule pair) ahead of implementation. No code-level behaviour changes to verdict outputs; the bazaar-check JSON API contract (X402-44) is preserved verbatim. Cohort: three external contributors credited (@TateLyman across two PRs + @TKCollective fixture).
+
+### Added
+
+- **AgentOracle captured-response fixture (hybrid D.3 + D.5)** ([#87](https://github.com/fardinvahdat/x402trace/pull/87), thanks @TKCollective 🙏). New `tests/fixtures/bazaar/captured-responses/agentoracle-upstream-stuck-body-discovery.json` — operator-contributed live capture from `agentoracle.co/research` showing the canonical 2026-05-09 → 2026-05-11 stuck-listing pattern: `extensions.bazaar` validates clean (BodyDiscoveryExtension variant, D.5 path), CDP discovery returns empty resources (D.3 indexer-state `processing`), composite verdict `upstream_stuck`. Captured under the [#2207](https://github.com/x402-foundation/x402/issues/2207) cluster as TKCollective's bucket-2/3 reference case. Fourth fixture under the v0.3.2 captured-responses harness (alongside the three hand-rolled D.x captures from X402-47); first operator-contributed live capture from the named v0.3.2 cohort. Picked up automatically by `tests/integration/bazaar-check-captured-responses.test.ts` — no harness changes.
+- **ADR-007 drafted in [DECISIONS.md](./DECISIONS.md)** — v0.3.3 K (payment-payload echo gap diagnose rules + `detail.upstream_stuck_cause` discriminator). Records the design ahead of [X402-50](https://vahdatfardin.atlassian.net/browse/X402-50) implementation per ADR convention (same pattern as ADR-003 → X402-31 v0.3.0 and ADR-004 → X402-41 v0.3.2). ADR-005 (G facilitator-fitness, [X402-51](https://vahdatfardin.atlassian.net/browse/X402-51)) + ADR-006 (I `service_unreachable`, [X402-52](https://vahdatfardin.atlassian.net/browse/X402-52)) slots reserved for v0.3.3 implementation cycle. Two-voice promotion: @RipperMercs (TensorFeed canonical writeup, 1→29 indexed in <1hr) + @TKCollective (44-line patch, 16+d stuck → 22min indexed). @AsaiShota's contrast case (payload-correct, still stuck) baked into AC as false-positive sentinel.
+- **Giveth project rail in `.github/FUNDING.yml` + README "Donate" section** ([#93](https://github.com/fardinvahdat/x402trace/pull/93)). Giveth project page at `https://giveth.io/project/x402trace` joins the direct-wallet Basescan link as the second supported donation rail. Multichain support (Base, Ethereum, Optimism, Polygon) with optional GIVbacks rewards for donors. Donations through either rail land in the same wallet. Drips Network registration remains deferred per [[iran-residency-payment-rails]] constraints (platform-side ETH fee gate); `FUNDING.json` claim file from v0.3.2 stays in place for whenever the fee is payable.
+
+### Fixed
+
+- **`bazaar-check` body-discovery remediation copy alignment** ([#80](https://github.com/fardinvahdat/x402trace/pull/80), thanks @TateLyman 🙏 — first-time contributor). Remediation message in the body-discovery sub-check refactor referenced the legacy MCP-discovery field names; aligned the copy to the variant-aware shape introduced in v0.3.2 D.5 ([X402-43](https://vahdatfardin.atlassian.net/browse/X402-43)). Surgical copy fix only — no verdict-logic change, no JSON API impact. Audit-pass-first-time pattern for an external contribution.
+
 ### Documentation
 
-- Clarify Bazaar contributor discipline for captured-response fixtures,
-  discovery-variant triage, and no-payment-required testing in
-  `CONTRIBUTING.md`.
+- **Bazaar contributor handbook** in `CONTRIBUTING.md` ([#86](https://github.com/fardinvahdat/x402trace/pull/86), thanks @TateLyman 🙏 — second contribution within 27h of accepting his handbook offer). New section covering captured-response fixture conventions (`tests/fixtures/bazaar/captured-responses/` schema, self-describing JSON shape, automatic harness pickup), discovery-variant triage (BodyDiscoveryExtension vs McpDiscoveryExtension shape detection), and the no-payment-required testing discipline (fixture replay over live HTTP, deterministic verdicts in CI). Onboards the body-discovery + captured-response work shipped through v0.3.2 D.3/D.4/D.5/X402-47 for future external contributors.
+- **Paid audits section** in `README.md` ([#89](https://github.com/fardinvahdat/x402trace/pull/89)). Maintainer-side review offering for teams shipping x402-paid services at scale — bazaar-readiness gap audits, multi-rail integration checks, supply-chain hygiene review. Hourly + flat-rate options; payment via direct wallet or x402 itself. Companion surface to the funding rails (Basescan + Giveth + FUNDING.json) — donations support open-source maintenance; paid audits are commercial work.
+
+### Internal
+
+- **Publish-surface cap raised 420 KB → 440 KB** in `scripts/check-publish-surface.mjs`. Necessary for v0.3.2.1 to pass CI (CI-measured tarball at 430,475 bytes exceeds the 430,080-byte cap by 395 bytes — locally 429,993 bytes due to a ~482-byte pnpm-pack discrepancy between macOS and the GitHub Actions Linux runner). Same step size as v0.3.2's 400 → 420 cycle. Gives ~20 KB headroom for v0.3.3's K/G/I diagnose-rule additions and their new `detail.*` facets (`upstream_stuck_cause`, `facilitator_fitness`, `reachability`).
+- **`.gitignore` for `graphify-output/` artifacts** ([#90](https://github.com/fardinvahdat/x402trace/pull/90)). Session-local knowledge-graph outputs from the `/graphify` workflow shouldn't ship in the repo or pack into the npm tarball. Clean separation from the published `dist/` surface.
+- **Canonicalize donate wallet to `0xe922Cc1D44C69bDEc8581Cc9Fd28bab8f59478CC`** ([#91](https://github.com/fardinvahdat/x402trace/pull/91)). Updated all in-repo references (README, FUNDING.yml, FUNDING.json) to the single canonical maintainer EOA. Same address resolves on Base + Ethereum mainnet.
+- **`FUNDING.json` claim file for Drips Network** ([#92](https://github.com/fardinvahdat/x402trace/pull/92)). Drips protocol expects a `FUNDING.json` at repo root with claim-signature fields; file is ready for the Drips registration whenever the platform-side ETH fee is payable. Defers the actual on-chain registration but lands the spec-correct claim shape.
+
+### Changed
+
+- **`src/cli/index.ts` `VERSION` constant** bumped 0.3.2 → 0.3.2.1.
+- **`CLAUDE.md` Status line** updated to reflect v0.3.2 SHIPPED to npm + external adoption evidence (@0xdespot, @poteshniy, @RipperMercs, @TKCollective public `npx x402trace@0.3.2` runs in the [#2207](https://github.com/x402-foundation/x402/issues/2207) closure loop) + v0.3.3 scope pointer (X402-50/51/52 filed 2026-05-27) + deagentic.ai forward-direction reference.
+
+### Notes
+
+- **Test count:** v0.3.2 shipped 511 passed + 4 skipped (515 total) → v0.3.2.1 runs **514 passed + 4 skipped (518 total)**, +3 tests from the captured-responses harness iterating over the new agentoracle fixture (top-level verdict assertion + per-check sub-verdict assertions). No new test files; the harness picks up the fixture automatically.
+- **Tarball size:** v0.3.2's 102 files / 416,867 bytes (~407 KB) unpacked → v0.3.2.1: **102 files / 430,475 bytes (~420 KB) unpacked in CI / 429,993 bytes locally on macOS** (+13–14 KB from the new captured-response fixture + CHANGELOG entry + DECISIONS.md ADR-007 + README/FUNDING additions). pnpm-pack output is reproducibly ~482 bytes larger in the GitHub Actions Linux runner than on macOS (line-ending or pack-order details — not in scope to fix). The CI measurement is the source of truth. **Publish-surface cap raised in this release**: `MAX_UNPACKED_BYTES` in `scripts/check-publish-surface.mjs` bumped 420 KB → 440 KB — same step size as v0.3.2's 400 → 420 raise. v0.3.3's three diagnose-rule additions (K + G + I) and their new `detail.*` facets (`upstream_stuck_cause`, `facilitator_fitness`, `reachability`) get ~20 KB of headroom. Revisit again in v0.3.3 alongside the deferred legacy `detail.status` field cleanup on indexing per ADR-004's follow-up.
+- **Runtime `dependencies` count unchanged** from v0.3.2 (4: `commander`, `dotenv`, `viem`, `x402`). No supply-chain expansion. Zero devDep imports from `dist/`.
+- **JSON API stability preserved.** No additive or breaking changes to `bazaar-check --log json` envelope, facets, or verdict discriminator. Snapshot test passes against v0.3.2's frozen exemplar at `tests/fixtures/bazaar/json-api-snapshot.json` without regeneration. TomSmart_ai's mapper-integration + @poteshniy's `agenttrust.uk/v1/reputation` API (the named JSON API consumers per X402-44) require no changes.
+- **No breaking changes.** v0.3.2 → v0.3.2.1 is strictly additive (one new captured-response fixture + ADR-007 + docs + funding rail). v0.3.0/0.3.1/0.3.2 callers see identical behaviour.
+- **External adoption signals captured during the v0.3.2 → v0.3.2.1 window:** @0xdespot ran `npx -y x402trace@0.3.2 bazaar-check` against hyperD 2026-05-23 (D.4 `--endpoint` mode, returned `upstream_stuck` verdict on the variant-aware body-discovery path — exactly the AC for X402-42 + X402-43). @poteshniy (AgentTrust) shipped `agenttrust.uk/v1/reputation` 2026-05-26 — a free public compliance API that consumes the x402trace v0.3.2 JSON shape directly, validating the X402-44 stability commitment externally. @TomSmart_ai's mapper-mcp parser audit on 2026-05-27 (anchored to a maintainer reference to `src/decoder/parse.ts:113-125`) re-classified 401 previously-failed v2 endpoints as valid, a measurable ecosystem-cleanup outcome attributable to the v0.3.2 + Discord exchange chain. Five operators in the [#2207](https://github.com/x402-foundation/x402/issues/2207) closure loop: RipperMercs / TKCollective / AsaiShota / 0xdespot / poteshniy.
+- **v0.3.3 scope locked 2026-05-27:** three diagnose-rule additions filed during this fast-follow window — [X402-50](https://vahdatfardin.atlassian.net/browse/X402-50) K (payment-payload echo gap, ADR-007 in this release), [X402-51](https://vahdatfardin.atlassian.net/browse/X402-51) G (facilitator-fitness, non-CDP rail awareness; AgentOracle SKALE+PayAI offered as 2nd non-CDP fixture), [X402-52](https://vahdatfardin.atlassian.net/browse/X402-52) I (`service_unreachable` verdict for network-layer-fail). All three are 2-voice promotions per the strictness bar; v0.3.3 cycle opens after v0.3.2.1 ships. Notion plan: https://www.notion.so/36d03c62b26381c78b23d194ebdaf7fc.
+- **TomSmart_ai cdp-mature fixture wire-up further deferred** — original X402-49 AC called for wiring in the 17-endpoint cdp-mature production-set fixture. TomSmart's v0.3.2 verdict-deltas haven't posted publicly yet (his attention has been on the parser audit + POST-only-endpoint discovery work this week). Per the X402-49 edge-case clause ("TomSmart deltas not posted within 72h → cut v0.3.2.1 with PR #80 + CHANGELOG only; defer cdp-mature wire-up to v0.3.2.2 or v0.3.3"), the wire-up folds into the v0.3.3 cycle alongside the K/G/I fixture work. Production-set fixture infrastructure shipped in v0.3.2 (X402-47) is ready for the data as soon as the deltas land.
+
+### Contributors
+
+External contributors and operators who shaped v0.3.2.1 directly:
+
+- [@TateLyman](https://github.com/TateLyman) 🙏 — first-time contributor, two PRs in one cycle. [#80](https://github.com/fardinvahdat/x402trace/pull/80) body-discovery remediation copy fix + [#86](https://github.com/fardinvahdat/x402trace/pull/86) Bazaar contributor handbook section in `CONTRIBUTING.md`. Audit-pass-first-time on both PRs; second PR landed within 27h of accepting the handbook offer. High-velocity scope-disciplined contributor pattern.
+- [@TKCollective](https://github.com/TKCollective) 🙏 — [#87](https://github.com/fardinvahdat/x402trace/pull/87) agentoracle captured-response fixture (hybrid D.3 + D.5). Hybrid hits two verdict facets in a single capture; first operator-contributed live capture in the v0.3.2 fixture-consumption harness. Concurrent #2207 closure-row work + the SKALE+PayAI fixture offer for v0.3.3 G during this release window — three contribution touches in one week.
 
 ## [0.3.2] — 2026-05-23
 
@@ -282,7 +325,8 @@ The v0.1 wedge: a local proxy + timeout-reconciliation engine that catches the c
 
 ---
 
-[Unreleased]: https://github.com/fardinvahdat/x402trace/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/fardinvahdat/x402trace/compare/v0.3.2.1...HEAD
+[0.3.2.1]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.3.2.1
 [0.3.2]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.3.2
 [0.3.1]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.3.1
 [0.3.0]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.3.0
