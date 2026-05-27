@@ -3,7 +3,7 @@
  *
  * Manifest-claim-based detection per ADR-004 Pillar 3. Other detection
  * options (TomSmart's `facilitator_inferred`, empirical probe, hybrid)
- * are deferred to v0.3.3+.
+ * are deferred to v0.3.4+.
  */
 import { describe, expect, it } from "vitest";
 import { detectFacilitator } from "../../src/bazaar/facilitator-detect.js";
