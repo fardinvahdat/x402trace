@@ -20,14 +20,14 @@ import { execSync } from "node:child_process";
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
-// v0.3.0 actual ~337 KB → v0.3.1 ~349 KB → v0.3.2 ~407 KB → v0.3.2.1 ~420 KB
+// v0.3.0 actual ~337 KB → v0.3.1 ~349 KB → v0.3.2 ~407 KB → v0.3.3 ~420 KB
 // (CI-measured 430,475 bytes; locally measured 429,993 bytes — pnpm-pack
 // output is reproducibly ~482 bytes larger in the GitHub Actions Linux
 // runner than on macOS, likely from line-ending or pack-order details).
-// v0.3.2.1 cycle adds AgentOracle captured-response fixture (#87) + ADR-007
-// for v0.3.3 K + CHANGELOG growth from the contributor-cohort credit. Bump
-// cap to 440 KB for v0.3.2.1 — same step size as the v0.3.2 cycle's
-// 400 → 420 raise. Revisit in v0.3.3 once K/G/I land their `detail.*`
+// v0.3.3 cycle adds AgentOracle captured-response fixture (#87) + ADR-007
+// for v0.3.4 K + CHANGELOG growth from the contributor-cohort credit. Bump
+// cap to 440 KB for v0.3.3 — same step size as the v0.3.2 cycle's
+// 400 → 420 raise. Revisit in v0.3.4 once K/G/I land their `detail.*`
 // facets (`upstream_stuck_cause`, `facilitator_fitness`, `reachability`)
 // plus the deferred legacy `detail.status` field cleanup on indexing per
 // ADR-004's follow-up.

@@ -152,7 +152,7 @@ export type IndexingStatus = "indexed" | "processing" | "not_found" | "error";
  *     is working-as-intended (per ADR-004 Pillar 3). Rolls up to
  *     `looks_correct`, NOT `upstream_issue`.
  *
- * v0.3.3+ deferred: `processing_fresh` vs `processing_stale`
+ * v0.3.4+ deferred: `processing_fresh` vs `processing_stale`
  * distinction (requires settle-timestamp data x402trace doesn't
  * collect today without driving live settles or accepting
  * operator-supplied evidence via a future flag).
