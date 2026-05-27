@@ -322,3 +322,89 @@ Each ADR uses this template:
   - **Out of scope for v0.3.2, kept for v0.3.3+ or later:** candidate_F alt-challenge-surface (1 voice @0xdespot), candidate_G facilitator-fitness check (1 voice @Cryptor, corroborative not generative), `tokenNameMismatchRule`, `repeatedNonceRule`, `extensions.diagnostic` decoder (gated on [x402-foundation/x402#1875](https://github.com/x402-foundation/x402/pull/1875)), `--watch` daemon, ERC-6492, non-Base chains, SaaS surface. All retained per ADR-003's restrictions; this ADR adds no new restrictions, only sharpens verdict semantics within the existing wedge.
 
 ---
+
+## ADR-007: v0.3.3 K — payment-payload echo gap diagnose rules + `upstream_stuck_cause` sub-verdict discriminator
+
+- **Status:** Proposed
+- **Date:** 2026-05-27
+- **Numbering note:** ADR-005 + ADR-006 are reserved for the sibling v0.3.3 candidates G (facilitator-fitness, [X402-51](https://vahdatfardin.atlassian.net/browse/X402-51)) and I (`service_unreachable`, [X402-52](https://vahdatfardin.atlassian.net/browse/X402-52)) respectively. They will be appended in the same v0.3.3 cycle when those tickets enter implementation. ADR-007 lands first because K ([X402-50](https://vahdatfardin.atlassian.net/browse/X402-50)) has the cleanest spec (canonical writeup + reference implementation already merged in operator-side commits) and the lowest scope-ambiguity (no new top-level verdict, no new exit code).
+
+- **Context:** [x402-foundation/x402#2207](https://github.com/x402-foundation/x402/issues/2207) cracked open 2026-05-26 with a canonical two-field root cause that had been silently swallowing CDP Bazaar listings for weeks. The signature: `EXTENSION-RESPONSES: e30=` (base64 for `{}`) on `/settle` 200 responses, no catalog landing, `l30DaysTotalCalls` frozen indefinitely. v0.3.2's `upstream_stuck` verdict (introduced in ADR-004 Pillar 1) correctly identifies the symptom but offers no attribution between the multiple root causes that produce it.
+
+  **Three operators provided the evidence in a 12-hour window 2026-05-26:**
+
+  | Voice | Role | Evidence |
+  | --- | --- | --- |
+  | @RipperMercs (TensorFeed) | **Primary voice** | Canonical writeup. 1 → 29 indexed in under an hour for $0.52 of test settles after shipping both fixes server-side. Reference impl committed at [tensorfeed worker/src/cdp-facilitator.ts](https://github.com/RipperMercs/tensorfeed/blob/main/worker/src/cdp-facilitator.ts). |
+  | @TKCollective (AgentOracle) | **Corroborating voice** | Applied both enrichments in commit `71272948` (44-line patch). After 16+ days `upstream_stuck`, indexed 22 minutes post-fix (tx [`0xa48fa2c2…7017`](https://basescan.org/tx/0xa48fa2c264dbf19be0b2b2885edb63ad15ee4f10facd4d54df4fda6d0b734017)). Committed to dropping a pre/post-fix delta row on the [#72](https://github.com/fardinvahdat/x402trace/issues/72) captured-response fixture. |
+  | @AsaiShota (x402-market) | **Contrast voice** | test-echo-cdp has shipped both enrichments since ~2026-05-09 and remains frozen in `/discovery` since 2026-05-11. Establishes a **second failure mode past payload enrichment** — payload-shape-correct-but-still-stuck. Rules must NOT mis-classify this case as a payload echo gap. |
+
+  **The two missing buyer-side fields** (per `PaymentPayloadV2Schema`, `@x402/core@2.11.0` `schemas/index.d.mts:315-389`):
+
+  1. `paymentPayload.resource` must be `{url, description?, mimeType?}` **object**, not a URL string. A bare string returns CDP HTTP 400 `'paymentPayload' is invalid`.
+  2. `paymentPayload.extensions` must be **echoed verbatim from the 402 challenge**. Without this, CDP skips bazaar processing entirely and emits the `EXTENSION-RESPONSES: e30=` signature.
+
+  **Strictness-bar verification:** 2 named independent voices on the root-cause rules themselves (RipperMercs + TKCollective). Both observed the indexer flip post-fix on independent services with independent payload-construction code. AsaiShota's case is intentionally NOT counted toward the rule pair — they document the contrast (payload-correct, still stuck) which becomes a guard-rail rather than a promotion signal. Promoted via the standard ≥2-voice path, not the bug-pathway.
+
+  **Concurrent v0.3.3 candidates** (filed in same scope-eval session):
+  - [X402-51](https://vahdatfardin.atlassian.net/browse/X402-51) **G** — facilitator-fitness (non-CDP rail awareness); ADR-005 pending implementation.
+  - [X402-52](https://vahdatfardin.atlassian.net/browse/X402-52) **I** — `service_unreachable` sub-verdict (network-layer vs x402-layer); ADR-006 pending implementation.
+  - Together with K, three diagnose-rule additions across the v0.3.3 cycle. Same shape as v0.3.2's D.1-D.5 fan-out.
+
+- **Decision:** Two new diagnose rules in `src/diagnose/` refining `upstream_stuck` with a new sub-cause discriminator. **No new top-level verdict. No new exit code.** Strictly additive to v0.3.2's JSON API contract (X402-44).
+
+  ### Rule 1: `payment_payload_missing_resource_object`
+
+  Fires when buyer-side payload capture (proxy mode or fixture replay) shows `paymentPayload.resource` as a bare URL string. Requires payload capture; if no capture is available, the rule **defers** (does not fire false-negative). Deterministic: schema is canonical, the string-vs-object check is bit-for-bit identifiable.
+
+  ### Rule 2: `extensions_not_echoed`
+
+  Fires when `EXTENSION-RESPONSES: e30=` (base64 `{}`) appears on `/settle` 200 responses **AND** the upstream 402 challenge declared a non-empty `extensions` block. Requires both signals — the empty-`{}` alone is not enough (some bazaar-disabled paths legitimately produce `{}`); the challenge-side non-empty declaration is what makes the gap diagnosable.
+
+  ### Sub-verdict discriminator: `detail.upstream_stuck_cause`
+
+  Refines the existing `upstream_stuck` composite verdict (from ADR-004 Pillar 1, [X402-46](https://vahdatfardin.atlassian.net/browse/X402-46)) with attribution:
+
+  ```
+  detail.upstream_stuck_cause:
+    | "payload_echo_gap"        # ≥1 of K's two rules fired
+    | "indexer_state_terminal"   # bucket-3 per @0xdespot — catalog never lands (X402-46)
+    | "indexer_state_processing" # bucket-2 working-slow per @0xdespot (X402-46)
+    | "unknown"                  # default — covers AsaiShota's contrast case
+  ```
+
+  **Rollup unchanged:** `upstream_stuck` continues to map to exit code 3 (the existing `upstream_issue`-folded exit-code per ADR-004). `detail.upstream_stuck_cause` is additive in JSON output and surfaces as one line in human-format output beneath the verdict. CI integrations that grep exit codes don't break.
+
+  **Multi-endpoint synthesis:** in a single `bazaar-check` run touching multiple paid endpoints, per-endpoint `upstream_stuck_cause` is emitted; top-level `upstream_stuck_cause` is the union — `payload_echo_gap` if any endpoint fires either rule. The narrower causes (`indexer_state_*`) win over `unknown` but yield to `payload_echo_gap` when both are present (echo gap is upstream of the indexer state).
+
+  **Fixture-driven validation:** @TKCollective's pre/post-fix delta on the [#72](https://github.com/fardinvahdat/x402trace/issues/72) captured-response fixture is the canonical snapshot test. Pre-fix capture must assert `upstream_stuck_cause: payload_echo_gap`. Post-fix capture must assert either `looks_correct` or `upstream_stuck_cause: unknown`. @AsaiShota's test-echo-cdp must assert `upstream_stuck_cause: unknown` (NOT `payload_echo_gap`) — guards the contrast voice into the test bed as a false-positive sentinel.
+
+  **Reference impl is a comment, not a dependency:** @RipperMercs's [tensorfeed worker/src/cdp-facilitator.ts](https://github.com/RipperMercs/tensorfeed/blob/main/worker/src/cdp-facilitator.ts) is documented as the canonical fix shape in `src/bazaar/diagnose-rules.md`. x402trace does not import their code; their pattern is the operator-side remediation that the rules surface.
+
+- **Consequences:**
+  - **Enables.** Operator running `bazaar-check` against a stuck listing now gets attribution: "your listing is stuck because your buyer wrapper isn't echoing `extensions`, here's the canonical fix shape," rather than "your listing is stuck, here's a generic upstream-issue message." Five operators in the 2026-05-26 #2207 thread spent collective days debugging this; v0.3.3 closes the loop. JSON consumers (@TomSmart's mapper db, @poteshniy's `agenttrust.uk/v1/reputation`) get a discriminator they can use to bucket stuck listings without re-implementing the payload introspection. The contrast voice (@AsaiShota's test-echo-cdp) gets a sentinel that protects against false-positive routing — the rule pair improves attribution precision without losing recall on the existing `upstream_stuck` taxonomy.
+  - **Restricts.** Rule 1 requires buyer-side payload capture (proxy mode or fixture replay). Without capture, the rule defers — never fires false-positive on absent data. This means `bazaar-check` standalone (no proxy, no fixture) can detect Rule 2 (response-side signature) but not Rule 1 — accepted tradeoff. No remediation: x402trace does not modify buyer wrappers; it surfaces the gap and points at the canonical fix. Exit-code contract unchanged.
+  - **Risks.**
+    1. **Rule 2's `e30=` signature could appear in legitimate bazaar-disabled paths.** Medium. Mitigation: rule requires both the empty-`{}` response signature AND non-empty challenge-side `extensions` declaration; bazaar-disabled paths won't have the latter. Cross-validated against @AsaiShota's test-echo-cdp fixture (challenge declares extensions, response is `e30=`, but indexer-state-side facets explain why — `upstream_stuck_cause: unknown` is the right output, NOT `payload_echo_gap`).
+    2. **Multi-endpoint synthesis rule (union over per-endpoint discriminators) may surprise operators expecting a single-endpoint focus.** Low-medium. Mitigation: per-endpoint discriminators always emitted alongside the top-level; human-format output shows the per-endpoint breakdown when more than one fires; documentation in `src/bazaar/diagnose-rules.md` covers the synthesis explicitly.
+    3. **The reference-impl link to @RipperMercs's facilitator wrapper could rot if they restructure their repo.** Low. Mitigation: link is a documentation pointer, not a dependency; if the link rots, the rules continue to work; CHANGELOG ships a copy of the relevant pattern in `src/bazaar/diagnose-rules.md` so the canonical fix shape lives in-repo too.
+    4. **Future spec evolution of `PaymentPayloadV2Schema` could deprecate the `resource` object shape entirely.** Low (the schema is already canonical in `@x402/core@2.11.0`, used in production by CDP). Mitigation: rule pair pins to the `PaymentPayloadV2Schema` shape current at v0.3.3 ship; if the spec evolves, supersede this ADR rather than mutating the rules in place.
+    5. **JSON API snapshot churn on the new `upstream_stuck_cause` field.** Low. Strictly additive per X402-44 contract; snapshot test asserts presence of the new key, downstream consumers add a single optional field handler.
+    6. **Concurrent v0.3.3 work (G + I) introduces other new facets that could intersect with `upstream_stuck_cause`.** Low-medium. Mitigation: ADR-005 (G) and ADR-006 (I) are sequenced after this ADR; both must explicitly cross-reference `upstream_stuck_cause` and document how `reachability` / `facilitator_fitness` interact with the discriminator before their tickets close. Specifically, `service_unreachable` (I's new top-level verdict) takes precedence over `upstream_stuck` when both could apply — a service that fails DNS doesn't get an `upstream_stuck_cause` because it never reached upstream.
+
+- **Rejected alternatives:**
+  - **New top-level verdict `payload_echo_gap`.** Considered to give the payload gap its own composite verdict equal to `upstream_stuck` / `upstream_issue`. Rejected: the gap IS an upstream-stuck case; promoting it to a sibling verdict would force downstream consumers (TomSmart's mapper db, poteshniy's `/v1/reputation`) to handle a new top-level type for a refinement of an existing taxonomy. The discriminator field is the cheaper additive surface.
+  - **New exit code 5 for `upstream_stuck_cause: payload_echo_gap`.** Considered for CI integrations that want to differentiate. Rejected per the same logic as ADR-004's `upstream_stuck` rollup-to-3 decision: the exit code surface is a three-value contract; cause-attribution lives in JSON facets, not exit codes.
+  - **Detect the gap on the response side only (don't require buyer-side payload capture for Rule 1).** Considered for `bazaar-check`-standalone deployment without proxy. Rejected: response side can't distinguish "resource sent as string but accepted somehow" from "resource sent as object correctly" — the schema enforcement happens at CDP's facilitator boundary, so the response-side signature is the same shape regardless of which form the buyer sent. Capture-required for Rule 1 is the correct precision tradeoff.
+  - **Promote K via the bug-pathway (single-voice + confirmed defect).** Considered given the cleanness of the spec match. Rejected: the bug is in buyer-side wrapper code across the ecosystem, not in x402 spec or x402trace itself. The rule pair is a *feature* (new diagnose-rule capability) addressing the bug pattern. Standard ≥2-voice promotion applies; voices satisfied (RipperMercs + TKCollective).
+  - **Fold K into G or I's ticket** to consolidate v0.3.3 scope. Considered. Rejected: K's surface (refining an existing verdict's facet) is structurally different from G's (new facet entirely, non-CDP rail awareness) and I's (new top-level verdict, exit-code question). Three separate tickets, three separate ADRs, three separate audit-gate cycles — same shape as D.2/D.3/D.4/D.5's separability in v0.3.2.
+  - **Defer K to v0.4.** Considered to keep v0.3.3 surface small. Rejected: @TKCollective's [#72](https://github.com/fardinvahdat/x402trace/issues/72) delta-row fixture commit is in flight (committed for "tomorrow" from his 2026-05-26 reply). The captured-response fixture lands in days, not months; deferring K means an arriving high-quality fixture sits idle in `tests/fixtures/` without a consumer rule. Land K in v0.3.3 to absorb the fixture in the same cycle it arrives.
+
+- **What this means concretely for the v0.3.3 cycle:**
+  - **Execution order:** ADR-007 (this) → [X402-50](https://vahdatfardin.atlassian.net/browse/X402-50) K implementation → ADR-005 + [X402-51](https://vahdatfardin.atlassian.net/browse/X402-51) G implementation → ADR-006 + [X402-52](https://vahdatfardin.atlassian.net/browse/X402-52) I implementation → v0.3.3 release cut. ADRs land first in each sub-cycle, same pattern as ADR-003 → X402-31 (v0.3.0) and ADR-004 → D.x (v0.3.2).
+  - **Fixture-driven entry point:** TKCollective's #72 delta-row capture from his 2026-05-26 commitment is the canonical test surface. Ticket scaffolding can start before the fixture lands; the fixture wires in mid-cycle.
+  - **Out of scope for v0.3.3, kept for v0.4+:** auto-remediation (Rule 1 firing doesn't rewrite the buyer's wrapper code), hosted-product surface (deagentic.ai super-app is its own future-direction track per `[[deagentic-super-app-vision]]`), candidate_F alt-challenge-surface (still 1 voice), candidate_H directory-only manifest signal (still 1 voice), candidate_J orphaned-wallet (0 voices). All retained per ADR-001 + ADR-003 restrictions.
+
+---
+
+---
