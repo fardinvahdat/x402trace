@@ -28,6 +28,7 @@ Entries appear in this fixed order. New checks are appended (never reordered):
 5. `"propagation"` — metadata propagation diff (X402-45 / D.2, ADR-004)
 6. `"host-pollution"` — CDP merchant discovery multi-host listing-hygiene warning (X402-53 / L, ADR-008)
 7. `"facilitator-fitness"` — declared facilitator `/verify` probe with per-rail facet array (X402-51 / G, ADR-005)
+8. `"reachability"` — service URL network-layer probe with multi-probe consensus (X402-52 / I, ADR-006)
 
 Each entry is a `CheckResult`:
 
@@ -60,6 +61,7 @@ These fields are present when the check fires the corresponding code path. Consu
 | `propagation`    | `queryUrl`, `metadata_propagation` (`"ok" \| "partial" \| "missing" \| "unknown" \| "not_applicable_non_cdp"`), `diff[]` (when partial/missing), `httpStatus` (when HTTP error)                                                                |
 | `host-pollution` | `queryUrl`, `state` (`"no_pollution" \| "polluted" \| "unknown" \| "not_applicable_non_cdp"`), `polluted_paths[]` (when polluted), `polluted_path_count` (when polluted), `total_entries`, `distinct_hosts`, `httpStatus` (when HTTP error)            |
 | `facilitator-fitness` | `facilitator_fitness.rails[]` (per-rail array: `{rail, network, facilitator, identity_source, fitness, diagnostic?}`), `facilitator_fitness.summary` (`{ok, degraded, unreachable, unknown}` counts) |
+| `reachability` | `reachability.state` (`"ok" \| "unreachable_first_probe" \| "unreachable"`), `reachability.unreachable_cause` (`"dns_failure" \| "tcp_refused" \| "tls_error" \| "timeout" \| "persistent_5xx"`, absent when ok), `reachability.probe_count`, `reachability.consensus_threshold`, `reachability.consensus_met`, `reachability.consensus_window_ms`, `reachability.diagnostic` |
 
 The `challenge.detail.variant` field carries the detected discovery-extension variant (`"mcp-discovery"` \| `"body-discovery"` \| `"unknown"`) on failed validations. See ADR-004 Pillar 3 for the variant model.
 
@@ -120,7 +122,7 @@ Per-rail array is canonical — healthy CDP rails are NOT masked by degraded/unr
 
 ```jsonc
 {
-  "kind": "looks_correct" | "implementation_issue" | "upstream_issue" | "upstream_stuck",
+  "kind": "looks_correct" | "implementation_issue" | "upstream_issue" | "upstream_stuck" | "service_unreachable",
   "exitCode": 0 | 2 | 3,
   "message": "...",
   // Per-kind additional fields:
@@ -128,8 +130,26 @@ Per-rail array is canonical — healthy CDP rails are NOT masked by degraded/unr
   "upstreamChecks": [...]    // ONLY on "upstream_issue" and "upstream_stuck"
   "cause": "payload_echo_gap" | "indexer_state_processing" | "indexer_state_terminal" | "unknown"
                              // ONLY on "upstream_stuck" (X402-50 K, ADR-007)
+  "unreachableCause": "dns_failure" | "tcp_refused" | "tls_error" | "timeout"
+                             // ONLY on "service_unreachable" (X402-52 I, ADR-006)
+  "consensusThreshold": number  // ONLY on "service_unreachable"
+  "probeCount": number          // ONLY on "service_unreachable"
 }
 ```
+
+### `verdict.kind: "service_unreachable"` (X402-52 I, ADR-006)
+
+**Pre-empts all other verdicts** when network-layer probes reach consensus that the service is unreachable. A service that fails DNS / TCP / TLS / times-out never reached the surfaces that `looks_correct` / `implementation_issue` / `upstream_issue` / `upstream_stuck` diagnose; the root cause is the network-layer failure itself.
+
+Requires multi-probe consensus (default 3 consecutive matching probes within the per-cause window). Single-probe failure stays as `unreachable_first_probe` on the facet without promoting to top-level. Operators must supply `--probe-history-log <file>` to enable cross-invocation consensus; without it, top-level `service_unreachable` never fires (the facet still emits with `state: unreachable_first_probe`).
+
+Cross-facet precedence (per `src/bazaar/diagnose-rules.md`):
+
+```
+service_unreachable (I) > upstream_stuck.cause (K) > upstream_issue > facilitator_fitness facet (G) > host_pollution facet (L) > looks_correct
+```
+
+`persistent_5xx` is the one exception — it rolls to `upstream_issue`, NOT `service_unreachable`. Server-malfunction is a different class from unreachability.
 
 ### `verdict.cause` (X402-50 K, ADR-007)
 

@@ -9,7 +9,46 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-v0.3.4 cycle. L (host_pollution) shipped via PR #101; K (payment-payload echo gap) via PR #102. **G (facilitator-fitness) follows here**. I remains pending implementation.
+v0.3.4 cycle. L (host_pollution) via PR #101; K (payment-payload echo gap) via PR #102; G (facilitator-fitness) via PR #103. **I (service_unreachable + probe-history state) ships here — the final v0.3.4 ticket.** v0.3.4 release follows.
+
+### Added (I — X402-52)
+
+- **`reachability` check** ([X402-52](https://vahdatfardin.atlassian.net/browse/X402-52), per ADR-006). 8th and final v0.3.4 diagnose-rule. Probes the service URL at the network layer (DNS / TCP / TLS / HTTP) with bounded timeout + bounded retry. Classifies failures into a 5-state axis: `dns_failure | tcp_refused | tls_error | timeout | persistent_5xx`. Voices: divigent probe (2026-05-23 DNS-fail real example) + @TomSmart_ai (mapper.db cohort + 2026-05-28 traceroute anti-evidence + per-cause-window endorsement 2026-05-29). @AsaiShota's test-echo-cdp as false-positive sentinel pattern (carried from K).
+- **NEW top-level verdict `service_unreachable`** — first new top-level discriminator since v0.3.2's `upstream_stuck`. Exit 3 (same bucket as upstream_issue / upstream_stuck — exit-code contract per ADR-004 Pillar 2 preserved). **Pre-empts** all other verdict paths via the precedence rule `service_unreachable > upstream_stuck.cause (K) > upstream_issue > facilitator_fitness facet (G) > host_pollution facet (L) > looks_correct` — a DNS-failing service doesn't reach the surfaces those diagnose. Documented in `src/bazaar/diagnose-rules.md`.
+- **`bazaar.probe_attempt` JSONL event discriminant** ([src/decoder/schema.md](./src/decoder/schema.md)) — first stateful event added by `bazaar-check`. Records every reachability probe (success or fail) to enable cross-invocation multi-probe consensus.
+- **First stateful verdict in x402trace** — `service_unreachable` requires N consecutive matching probes within the per-cause window. Probe history is read from the JSONL log supplied via `--probe-history-log <file>`, current probe appended back. Preserves local-first stateless property: no external state directory; probe history lives in the same JSONL log operators already manage.
+- **Per-cause consensus windows table** (locked 2026-05-29 with @TomSmart_ai endorsement). DNS 5min / TCP 15min / TLS 30min / timeout 15min / persistent_5xx out-of-band. Operators scale uniformly via `--unreachable-interval-multiplier <n>`. Per-cause individual flags deferred to v0.4+.
+- **`persistent_5xx` is intentionally out-of-band** — server-malfunction signal, NOT unreachability. Classified via in-probe bounded retry (3 attempts × 500ms); rolls up to existing `upstream_issue`, NOT `service_unreachable`. Per ADR-006 explicit design.
+- **3 new CLI flags on `bazaar-check`:**
+  - `--probe-history-log <path>` — JSONL log for cross-invocation probe history. Without it, single-probe-only mode (top-level `service_unreachable` never fires).
+  - `--unreachable-consensus-count <n>` — consecutive matching probes required for top-level promotion (default 3).
+  - `--unreachable-interval-multiplier <n>` — uniform scalar over the per-cause windows table (default 1).
+- **`Clock` abstraction** (`src/bazaar/clock.ts`) — injectable for deterministic probe-history timestamps + window computations in tests. Production uses `realClock`; tests use `createMockClock()`.
+- **Anti-pattern documented**: "don't key verdicts on third-party single-snapshot status fields" — per @TomSmart_ai's 2026-05-28 traceroute analysis (13/15 mapper.db-labeled-unreachable endpoints were HTTP-reachable on re-probe; status field is stale by design). x402trace always uses its own multi-probe consensus.
+
+### Changed (I — X402-52)
+
+- **`bazaar-check` JSON output: results[] now contains 8 entries** (was 7 after G). New 8th entry `"reachability"`. No existing field renamed, removed, or reordered — X402-44 contract preserved.
+- **`BazaarVerdict` discriminated union** now includes the `service_unreachable` variant alongside `looks_correct | implementation_issue | upstream_issue | upstream_stuck`. New required fields on the `service_unreachable` variant: `unreachableCause`, `consensusThreshold`, `probeCount`. Strictly additive — existing variants unchanged.
+- **`verdict.ts` UPSTREAM_CHECKS set extended to include `"reachability"`** — info-status from I rolls to upstream signal when consensus not met. Verdict synthesizer checks reachability consensus FIRST and pre-empts the entire downstream verdict chain when fired.
+- **`src/bazaar/json-api.md`** documents the new check + facet + verdict shape + the precedence rule.
+- **`src/bazaar/diagnose-rules.md`** replaces the "pending implementation" placeholder with the full reachability spec.
+- **`src/decoder/schema.md`** documents the new `bazaar.probe_attempt` event discriminant.
+
+### Internal (I — X402-52)
+
+- **`src/bazaar/reachability.ts`** — new check module. Public surface: `checkReachability`, `classifyFetchError`. Single-probe + history-read + consensus-compute + facet emission + optional log append in one orchestration.
+- **`src/bazaar/probe-history.ts`** — new module. Public surface: `readProbeHistory`, `consensusReached`, `nextAttemptSeq`, `PER_CAUSE_INTERVAL_MS`. Pure functions; no I/O beyond `readFileSync` on the JSONL log.
+- **`src/bazaar/clock.ts`** — new module. `Clock` interface, `realClock`, `createMockClock`.
+- **`src/bazaar/types.ts`** — `ReachabilityState`, `UnreachableCause`, `ReachabilityFacet`, `ProbeAttemptRecord` types added.
+- **Test count:** G cycle shipped 598 → **646 passed + 4 skipped (650 total)** in this I cycle. +48 from 37 new reachability/probe-history/clock unit tests + 11 integration assertions.
+- **Publish-surface cap raised 540 KB → 600 KB + file count 110 → 120** in `scripts/check-publish-surface.mjs`. I added ~52 KB across 3 new source modules + their .d.ts companions in dist/.
+
+### JSON API (I — X402-52)
+
+- **Additive**: new 8th check `"reachability"` appended to `results[]` (was 7 in G cycle). New optional `reachability.detail.{state, unreachable_cause, probe_count, consensus_threshold, consensus_met, consensus_window_ms, diagnostic}` shape. New `service_unreachable` variant on `BazaarVerdict` discriminated union with required fields `unreachableCause`, `consensusThreshold`, `probeCount`. No existing field renamed, removed, reordered, or retyped. X402-44 contract preserved (additive change, minor-version-eligible per ADR-004 Pillar 2). Snapshot fixture regenerated.
+
+---
 
 ### Added (G — X402-51)
 

@@ -22,10 +22,12 @@
  */
 
 import { checkChallenge, fetchChallenge, checkSelfPayment } from "./challenge.js";
+import type { Clock } from "./clock.js";
 import { checkFacilitatorFitness } from "./facilitator-fitness.js";
 import { checkHostPollution } from "./host-pollution.js";
 import { checkIndexing } from "./indexing.js";
 import { checkPropagation } from "./propagation.js";
+import { checkReachability } from "./reachability.js";
 import type {
   BazaarReport,
   CheckResult,
@@ -83,6 +85,21 @@ export {
   type FacilitatorFitnessFetcher,
   type FacilitatorFitnessOptions,
 } from "./facilitator-fitness.js";
+export {
+  checkReachability,
+  classifyFetchError,
+  type ReachabilityCheckOptions,
+  type ReachabilityFetcher,
+} from "./reachability.js";
+export {
+  readProbeHistory,
+  consensusReached,
+  nextAttemptSeq,
+  PER_CAUSE_INTERVAL_MS,
+  DEFAULT_CONSENSUS_COUNT,
+  DEFAULT_INTERVAL_MULTIPLIER,
+} from "./probe-history.js";
+export { realClock, createMockClock, type Clock, type MockClock } from "./clock.js";
 export { synthesiseVerdict } from "./verdict.js";
 
 export interface BazaarCheckOptions {
@@ -104,6 +121,32 @@ export interface BazaarCheckOptions {
    * discoverability hygiene worth preserving.
    */
   readonly endpoint?: string;
+  /**
+   * X402-52 (I, ADR-006) — optional JSONL log path for cross-invocation
+   * probe history. When supplied, the reachability check reads prior
+   * `bazaar.probe_attempt` records from this file to compute multi-
+   * probe consensus, and appends the current probe attempt back to it.
+   * Without this, the reachability check runs in single-probe-only
+   * mode (consensus never reaches threshold; top-level
+   * `service_unreachable` verdict never fires).
+   */
+  readonly probeHistoryLog?: string;
+  /**
+   * X402-52 (I) — number of consecutive matching probes required to
+   * promote to top-level `service_unreachable` verdict. Defaults to 3.
+   */
+  readonly unreachableConsensusCount?: number;
+  /**
+   * X402-52 (I) — uniform scalar over the per-cause consensus windows
+   * table. Defaults to 1 (use the locked table verbatim). Operators
+   * wanting paranoia bump to 2 or 3.
+   */
+  readonly unreachableIntervalMultiplier?: number;
+  /**
+   * X402-52 (I) — test-injected clock for deterministic probe-history
+   * timestamps + window computations. Defaults to `realClock`.
+   */
+  readonly clock?: Clock;
   /**
    * X402-50 (K, ADR-007) — optional buyer-side payment payload
    * capture for Rule 1 (`payment_payload_missing_resource_object`).
@@ -261,6 +304,28 @@ export async function runBazaarCheck(opts: BazaarCheckOptions): Promise<BazaarRe
   results.push(
     await checkFacilitatorFitness(manifest, {
       fetcher,
+    }),
+  );
+
+  // 8. Reachability (X402-52 / I, ADR-006) — network-layer probe
+  //    classification (DNS / TCP / TLS / timeout / persistent_5xx).
+  //    Multi-probe consensus required for top-level `service_unreachable`
+  //    verdict. When `probeHistoryLog` provided, reads prior probes
+  //    and writes the current probe attempt back. Single-probe-only
+  //    mode (no log) emits facet under existing verdict + INFO note.
+  //    Per ADR-006: persistent_5xx is out-of-band — rolls to
+  //    upstream_issue (server malfunction), NOT service_unreachable.
+  results.push(
+    await checkReachability(opts.serviceUrl, {
+      fetcher,
+      ...(opts.probeHistoryLog !== undefined ? { probeHistoryLog: opts.probeHistoryLog } : {}),
+      ...(opts.unreachableConsensusCount !== undefined
+        ? { consensusCount: opts.unreachableConsensusCount }
+        : {}),
+      ...(opts.unreachableIntervalMultiplier !== undefined
+        ? { intervalMultiplier: opts.unreachableIntervalMultiplier }
+        : {}),
+      ...(opts.clock !== undefined ? { clock: opts.clock } : {}),
     }),
   );
 

@@ -79,6 +79,20 @@
           }
         }
       }
+    },
+    {
+      "check": "reachability",
+      "status": "pass",
+      "message": "service responsive: HTTP 402 on first probe (0ms) — service responsive",
+      "detail": {
+        "reachability": {
+          "state": "ok",
+          "probe_count": 1,
+          "consensus_threshold": 3,
+          "consensus_met": false,
+          "diagnostic": "HTTP 402 on first probe (0ms) — service responsive"
+        }
+      }
     }
   ],
   "verdict": {

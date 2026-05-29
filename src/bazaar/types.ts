@@ -97,6 +97,29 @@ export type BazaarVerdict =
       readonly upstreamChecks: readonly string[];
       /** X402-50 (K) — see UpstreamStuckCause. */
       readonly cause: UpstreamStuckCause;
+    }
+  | {
+      /**
+       * X402-52 (I, ADR-006) — service is unreachable at the network
+       * layer (DNS / TCP / TLS / timeout) consistently across N consecutive
+       * probes. Pre-empts upstream_stuck / upstream_issue /
+       * implementation_issue: the service never reached the surfaces
+       * those verdicts diagnose. Top-level discriminator carries the
+       * specific cause.
+       *
+       * Cross-facet precedence:
+       *   service_unreachable > upstream_stuck (K) > upstream_issue >
+       *   facilitator_fitness facet (G) > host_pollution facet (L) > looks_correct
+       */
+      readonly kind: "service_unreachable";
+      readonly message: string;
+      /** Exit 3 (same as upstream_issue / upstream_stuck). */
+      readonly exitCode: 3;
+      readonly unreachableCause: UnreachableCause;
+      /** Number of consecutive failed probes required for this top-level promotion. */
+      readonly consensusThreshold: number;
+      /** Actual count of consecutive matching probes that produced this verdict. */
+      readonly probeCount: number;
     };
 
 /**
@@ -228,6 +251,104 @@ export type UpstreamStuckCause =
   | "indexer_state_processing"
   | "indexer_state_terminal"
   | "unknown";
+
+/**
+ * X402-52 (I, ADR-006) — reachability state classification.
+ *
+ * Emitted under `detail.reachability.state` on the `reachability` check.
+ * Two layers:
+ *
+ *   - **Single-probe states** — emitted on every probe attempt.
+ *     - `ok` — service responded with 2xx/3xx/4xx within timeout
+ *     - `unreachable_first_probe` — single probe failed; classification
+ *       in `unreachable_cause` field. Verdict-wise this rolls up to
+ *       existing `implementation_issue` with an INFO note (single-probe
+ *       failure isn't enough to fire top-level `service_unreachable`
+ *       per ADR-006).
+ *
+ *   - **Consensus state** — emitted when prior probe history is
+ *     available + consensus threshold is met.
+ *     - `unreachable` — N consecutive probes (default 3) failed with
+ *       the same `unreachable_cause` within the per-cause window.
+ *       Verdict rolls up to top-level `service_unreachable` (new
+ *       discriminator on `BazaarVerdict`, exit 3).
+ */
+export type ReachabilityState = "ok" | "unreachable_first_probe" | "unreachable";
+
+/**
+ * X402-52 (I, ADR-006) — sub-cause discriminator on the reachability
+ * facet. Per-failure-mode classification axis locked 2026-05-29 with
+ * TomSmart_ai endorsement; per-cause consensus intervals captured in
+ * [aios/decisions/adr-006-probe-history-impl-notes-2026-05-29.md].
+ *
+ *   - `dns_failure` — NXDOMAIN, no A/AAAA records. Fastest-converging
+ *     signal (5min default consensus interval). NXDOMAIN-over-N-probes
+ *     is the v0.3.4 floor that ships first.
+ *   - `tcp_refused` — DNS resolved, port connect refused. Transient
+ *     sources (LB reaping, deploy churn); 15min consensus interval.
+ *   - `tls_error` — TCP connected, TLS handshake failed (cert/ALPN).
+ *     30min consensus interval — TLS-1.3/ALPN edge cases per
+ *     TomSmart's traceroute analysis flap on this window.
+ *   - `timeout` — TCP connected, no response within bounded window.
+ *     15min consensus interval (same transient class as tcp_refused).
+ *   - `persistent_5xx` — service responded with 5xx consistently
+ *     within ONE probe attempt's bounded retry loop. Out-of-band:
+ *     this is a server-malfunction signal, NOT unreachability — rolls
+ *     up to existing `upstream_issue` verdict, NOT `service_unreachable`.
+ */
+export type UnreachableCause =
+  | "dns_failure"
+  | "tcp_refused"
+  | "tls_error"
+  | "timeout"
+  | "persistent_5xx";
+
+/**
+ * X402-52 (I, ADR-006) — facet on the `reachability` check's
+ * CheckResult.detail. Surfaced under
+ * `detail.reachability.{ state, unreachable_cause?, probe_count, ... }`.
+ * Cross-facet precedence: top-level `service_unreachable` verdict
+ * pre-empts K's `upstream_stuck.cause`, G's `facilitator_fitness`,
+ * and L's `host_pollution` — a service that fails DNS doesn't reach
+ * the upstream surfaces those probe.
+ */
+export interface ReachabilityFacet {
+  readonly state: ReachabilityState;
+  /** Only present when `state !== "ok"`. */
+  readonly unreachable_cause?: UnreachableCause;
+  /** Total probes considered (current + prior from log history, when available). */
+  readonly probe_count: number;
+  /** Configured consensus threshold (default 3). */
+  readonly consensus_threshold: number;
+  /** Whether consensus is met (probe_count >= threshold + all match cause). */
+  readonly consensus_met: boolean;
+  /** Optional one-line diagnostic for the probe outcome. */
+  readonly diagnostic?: string;
+  /** Per-cause window applied (in ms). Present when probe history was consulted. */
+  readonly consensus_window_ms?: number;
+}
+
+/**
+ * X402-52 (I, ADR-006) — `bazaar.probe_attempt` event discriminant
+ * written to the JSONL log on every reachability probe. Re-invocations
+ * of `bazaar-check --log <file>` read prior `probe_attempt` records to
+ * compute multi-probe consensus. Preserves the local-first stateless
+ * property: no external state directory; probe-history lives in the
+ * same JSONL log the run writes.
+ */
+export interface ProbeAttemptRecord {
+  readonly event: "bazaar.probe_attempt";
+  /** ISO-8601 UTC timestamp of the probe. */
+  readonly t: string;
+  /** Service URL probed. Used as the key for grouping probe history. */
+  readonly service_url: string;
+  /** 1-indexed sequence per (service_url, log file) — incremented on each invocation. */
+  readonly attempt_seq: number;
+  /** Outcome cause; null when state === "ok". */
+  readonly unreachable_cause: UnreachableCause | null;
+  /** Wall-clock latency of the probe in ms. */
+  readonly latency_ms: number;
+}
 
 /**
  * X402-51 (G, ADR-005) — per-rail facilitator-fitness classification.

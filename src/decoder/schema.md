@@ -67,6 +67,29 @@ Emitted when the proxy captures a request carrying an `X-PAYMENT` (v1) or `PAYME
 
 - `payload.signature` is `[REDACTED]` by default. Pass `logSecrets: true` to `createDecoder` (or `--log-secrets` from the CLI) to keep the raw signature.
 
+### `bazaar.probe_attempt`
+
+X402-52 (I, ADR-006) — emitted by `bazaar-check`'s reachability check on every network-layer probe of the service URL. Records the outcome of a single probe attempt so re-invocations can compute multi-probe consensus.
+
+```json
+{
+  "event": "bazaar.probe_attempt",
+  "t": "2026-05-30T12:00:00.000Z",
+  "service_url": "https://api.example.com/x402",
+  "attempt_seq": 3,
+  "unreachable_cause": "dns_failure",
+  "latency_ms": 50
+}
+```
+
+- `t` — ISO-8601 UTC timestamp. Used by `consensusReached` for window-membership computation.
+- `service_url` — Service URL probed. Used as the grouping key when reading prior `probe_attempt` records (probes for different services don't cross-contaminate consensus).
+- `attempt_seq` — 1-indexed sequence within the (service_url, log file) pair. Monotonically increases across invocations of `bazaar-check --probe-history-log <file>`.
+- `unreachable_cause` — `null` when probe succeeded (HTTP 2xx/3xx/4xx response); otherwise one of `"dns_failure" | "tcp_refused" | "tls_error" | "timeout" | "persistent_5xx"`. See `src/bazaar/diagnose-rules.md` § reachability for classification semantics.
+- `latency_ms` — Wall-clock latency of the probe (from request initiation to response or error).
+
+Written to the JSONL path supplied via `bazaar-check --probe-history-log <file>` (or `BazaarCheckOptions.probeHistoryLog`). When absent, no record is emitted and the reachability check runs in single-probe-only mode — top-level `service_unreachable` verdict cannot fire because consensus is never reached.
+
 ### `exchange.settlement`
 
 Emitted when the proxy captures a response carrying an `X-PAYMENT-RESPONSE` (v1) or `PAYMENT-RESPONSE` (v2) header.
