@@ -37,7 +37,14 @@ import { join } from "node:path";
 // `bazaar.host_pollution` event discriminant + diagnose-rules.md +
 // facilitator-registry.json across K/G/I/L. 480 KB gives ~30 KB
 // headroom for the K + G + I implementation cycle after L lands.
-const MAX_UNPACKED_BYTES = 480 * 1024;
+// X402-51 (G) raise 2026-05-29: 480 → 540 KB. K added ~14 KB (verdict
+// cause discriminator + AsaiShota contrast fixture + K rule module).
+// G adds ~30 KB (facilitator-fitness module + registry JSON + 25 unit
+// tests + anchor-x402 multi-rail fixture). 508 KB after G; bumping to
+// 540 KB gives ~32 KB headroom for I (probe-history state + 5+ new
+// reachability fixtures: NXDOMAIN, TCP refused, TLS error, timeout,
+// persistent_5xx, plus the JSONL probe_attempt event discriminant).
+const MAX_UNPACKED_BYTES = 540 * 1024;
 // v0.3.0: 96 → v0.3.1 + PR #69 fixtures: 100 → v0.3.2 cycle adds (json-api
 // stability + D.5 extensions-bazaar + D.2 propagation + D.3 facilitator-
 // detect): 102. Raised to 110 with breathing room for X402-47 fixture

@@ -65,6 +65,16 @@ interface CapturedResponseFixture {
       readonly status: number;
       readonly headers: Readonly<Record<string, string>>;
     };
+    /**
+     * X402-51 (G, ADR-005) — optional mock for the facilitator `/verify`
+     * probe used by `checkFacilitatorFitness`. When absent, the probe
+     * uses the default fetcher (which would hit real CDP/PayAI in real
+     * runs; in tests the surrounding `fixtureFetcher` returns the
+     * "challenge" mock by default, which the probe interprets as 2xx →
+     * fitness: ok, OR errors → unreachable depending on status). For
+     * deterministic G assertions, fixtures supply this explicitly.
+     */
+    readonly "facilitator-verify"?: { readonly status: number; readonly body?: unknown };
   };
   readonly expected: {
     readonly verdict:
@@ -102,14 +112,17 @@ function loadFixtures(): Array<{ filename: string; fixture: CapturedResponseFixt
 function fixtureFetcher(fixture: CapturedResponseFixture): typeof fetch {
   return ((urlInput: string) => {
     const url = String(urlInput);
-    let mock: { status: number; body: unknown };
+    let mock: { status: number; body?: unknown };
     if (url.endsWith("/.well-known/x402")) {
       mock = fixture.mocks["well-known"];
+    } else if (url.endsWith("/verify") || url.endsWith("/x402/verify")) {
+      // X402-51 (G) — facilitator-fitness probes the registered
+      // facilitator's /verify endpoint. When the fixture doesn't supply
+      // a mock, default to 200 with empty body — facilitator responsive,
+      // probe-payload rejected is the expected shape (the probe is
+      // testing reachability, not authorisation).
+      mock = fixture.mocks["facilitator-verify"] ?? { status: 200, body: {} };
     } else if (url.includes("discovery/merchant")) {
-      // X402-53 (L) — host-pollution check queries the merchant discovery
-      // endpoint. Fall back to the `discovery` mock when a fixture predates
-      // X402-53 and doesn't supply a separate `discovery-merchant` mock;
-      // the host-pollution check tolerates non-resources bodies as `unknown`.
       mock = fixture.mocks["discovery-merchant"] ?? fixture.mocks["discovery"];
     } else if (url.includes("discovery/resources")) {
       mock = fixture.mocks["discovery"];
@@ -117,7 +130,7 @@ function fixtureFetcher(fixture: CapturedResponseFixture): typeof fetch {
       mock = fixture.mocks["challenge"];
     }
     return Promise.resolve(
-      new Response(JSON.stringify(mock.body), {
+      new Response(JSON.stringify(mock.body ?? {}), {
         status: mock.status,
         headers: { "content-type": "application/json" },
       }),
@@ -126,17 +139,30 @@ function fixtureFetcher(fixture: CapturedResponseFixture): typeof fetch {
 }
 
 /**
- * Extract a per-check `detail` facet by dotted path: `<check>.<facet>`.
- * Example: `"indexing.indexer_state"` → finds the indexing result, then
- * reads `detail.indexer_state`.
+ * Extract a per-check `detail` facet by dotted path:
+ * `<check>.<key>[.<deeperKey>...]`. Example:
+ *   - `"indexing.indexer_state"` → `result.detail.indexer_state`
+ *   - `"facilitator-fitness.facilitator_fitness.summary.ok"` →
+ *     `result.detail.facilitator_fitness.summary.ok`
+ *
+ * Drills arbitrarily deep into nested objects (X402-51 G needs this
+ * for `facilitator_fitness.summary.<state>` assertions; flat
+ * `<check>.<key>` from earlier ADRs still works).
  */
 function extractFacet(
   results: ReadonlyArray<{ check: string; detail?: Record<string, unknown> }>,
   path: string,
 ): unknown {
-  const [checkName, facetKey] = path.split(".");
+  const parts = path.split(".");
+  const checkName = parts[0];
   const result = results.find((r) => r.check === checkName);
-  return result?.detail?.[facetKey ?? ""];
+  if (!result?.detail) return undefined;
+  let current: unknown = result.detail;
+  for (let i = 1; i < parts.length; i++) {
+    if (typeof current !== "object" || current === null) return undefined;
+    current = (current as Record<string, unknown>)[parts[i] ?? ""];
+  }
+  return current;
 }
 
 describe("bazaar-check captured-response fixtures (X402-47)", () => {

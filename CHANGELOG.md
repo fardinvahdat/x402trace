@@ -9,7 +9,36 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-v0.3.4 cycle. L (host_pollution) shipped first (PR #101); **K (payment-payload echo gap) follows here**. G + I remain pending implementation.
+v0.3.4 cycle. L (host_pollution) shipped via PR #101; K (payment-payload echo gap) via PR #102. **G (facilitator-fitness) follows here**. I remains pending implementation.
+
+### Added (G — X402-51)
+
+- **`facilitator-fitness` check** ([X402-51](https://vahdatfardin.atlassian.net/browse/X402-51), per ADR-005). New diagnose-rule that probes the merchant's declared `extensions.bazaar.facilitator` against a built-in registry (CDP, PayAI, x402.org/facilitator) and emits a per-rail fitness facet. Closes the v0.3.2 gap: `indexing.indexer_state: not_applicable_non_cdp` correctly avoided misattribution but offered no positive signal for non-CDP services. G fills the silence with a per-rail health probe. Voices: @Cryptor (CDP-only-by-design correction) + @TomSmart_ai (mapper-integration consumer) + @Cinderwright 3rd-touch (#1065 PayAI alternative). Canonical multi-rail fixture from Ferj/@hypeprinter007-stack's anchor-x402 (3 rails: Base USDC CDP + Solana USDC CDP + JPY Coin Polygon).
+- **`src/bazaar/facilitator-registry.json`** — built-in registry of 3 facilitators (CDP, PayAI, x402.org/facilitator) with declared URLs, name aliases, probe endpoints. Per ADR-005 § Risks #1: registry is data, not code; new facilitators land as PRs adding entries. Operator override via `--facilitator-registry <path>` deferred to v0.4+.
+- **New `facilitator_fitness` facet on `facilitator-fitness` check** — per-rail array (`{ rail, network, facilitator, identity_source, fitness, diagnostic? }`) + summary counts. Strictly additive per X402-44. Verdict synthesizer treats info-status `facilitator-fitness` as upstream signal — any unreachable rail rolls up to `upstream_issue` (exit 3); `degraded` rails surface in facet without flipping the verdict.
+- **Identity-source attribution** — declared / inferred-from-tx / unknown. v0.3.4 MVP supports `declared` only (read from `manifest.extensions.bazaar.facilitator`); tx-from inference reserved as a v0.4+ slot. Per ADR-005: declared-identity-first is load-bearing for gasless rails (SKALE+PayAI per TKCollective's fixture offer) where buyer-side tx `from` is the gasless relayer, not the facilitator.
+- **Bounded retry + backoff on `/verify` probe** — 3 attempts at 500ms / 1s / 2s per the @mkmkkkkk #1065 pattern. 4xx responses read as `ok` (facilitator is responsive; probe-payload rejection is expected). Cached per facilitator URL for the duration of a single `bazaar-check` run.
+- **`anchor-x402-facilitator-fitness-ok-multi-rail.json` new fixture** — Ferj/@hypeprinter007-stack's 3-rail capture adapted to G acceptance. Tests per-rail emission + summary aggregation across Base/Solana/Polygon when CDP is declared and the facilitator probe returns 2xx.
+
+### Changed (G — X402-51)
+
+- **`bazaar-check` JSON output: results[] now contains 7 entries** (was 6 after L). New 7th entry `"facilitator-fitness"` appended. No existing field renamed, removed, or reordered — X402-44 contract preserved.
+- **`verdict.ts` UPSTREAM_CHECKS set extended to include `"facilitator-fitness"`** — info-status from G rolls up to `upstream_issue` verdict when any rail is unreachable. Existing v0.3.2 verdict-rollup semantics unchanged for indexing/propagation.
+- **`src/bazaar/json-api.md`** documents the new check + facet shape + identity-source attribution.
+- **`src/bazaar/diagnose-rules.md`** replaces the previous "pending implementation" placeholder with the full G design + states + facet shape + multi-rail synthesis rule + cross-facet precedence.
+
+### Internal (G — X402-51)
+
+- **`src/bazaar/facilitator-fitness.ts`** — new check module. Public surface: `checkFacilitatorFitness`, `probeFacilitatorWithRetry`, `loadFacilitatorRegistry`, `resolveFacilitator`. Pure-function rule pair + a single network probe with bounded retry.
+- **`src/bazaar/types.ts`** — `FacilitatorFitnessState`, `FacilitatorFitnessIdentitySource`, `FacilitatorFitnessRailEntry`, `FacilitatorFitnessFacet` types added.
+- **Publish-surface cap raised 480 KB → 540 KB** in `scripts/check-publish-surface.mjs`. v0.3.4 K shipped at ~476 KB (~4 KB headroom); G adds ~30 KB (registry JSON + module + 25 unit tests + new multi-rail fixture). 540 KB gives ~32 KB headroom for I (probe-history state + 5+ new reachability fixtures + JSONL probe_attempt event discriminant).
+- **Test count:** K cycle shipped 570 passed → **598 passed + 4 skipped (602 total)** in this G cycle. +28 from the 25 new `tests/unit/bazaar-facilitator-fitness.test.ts` cases + 3 new integration assertions from the multi-rail fixture.
+
+### JSON API (G — X402-51)
+
+- **Additive**: new 7th check `"facilitator-fitness"` appended to `results[]` (was 6 in K cycle, 5 in v0.3.3). New optional `facilitator-fitness.detail.facilitator_fitness.{rails, summary}` shape. No existing field renamed, removed, reordered, or retyped. X402-44 contract preserved (additive change, minor-version-eligible per ADR-004 Pillar 2). Snapshot fixture regenerated.
+
+---
 
 ### Added (K — X402-50)
 

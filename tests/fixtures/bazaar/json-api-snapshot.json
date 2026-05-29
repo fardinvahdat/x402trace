@@ -55,6 +55,30 @@
         "total_entries": 1,
         "distinct_hosts": 1
       }
+    },
+    {
+      "check": "facilitator-fitness",
+      "status": "pass",
+      "message": "no facilitator declared in extensions.bazaar.facilitator; per-rail array emitted with fitness: unknown for snapshot stability",
+      "detail": {
+        "facilitator_fitness": {
+          "rails": [
+            {
+              "rail": 0,
+              "network": "",
+              "facilitator": null,
+              "identity_source": "unknown",
+              "fitness": "unknown"
+            }
+          ],
+          "summary": {
+            "ok": 0,
+            "degraded": 0,
+            "unreachable": 0,
+            "unknown": 1
+          }
+        }
+      }
     }
   ],
   "verdict": {

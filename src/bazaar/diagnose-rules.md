@@ -250,13 +250,46 @@ Both conditions are load-bearing. The `e30=` signature alone is not enough — b
 
 **Contrast voice (false-positive sentinel):** `tests/fixtures/bazaar/captured-responses/test-echo-cdp-stuck-cause-unknown.json` is the canonical guard. Payload is well-formed, extensions echo properly, but the listing is still stuck. K rules must NOT route this to `payload_echo_gap`; the fixture asserts `verdict.cause === "unknown"`.
 
-### `facilitator-fitness` (X402-51 / G, ADR-005) — pending implementation
+### `facilitator-fitness` (X402-51 / G, ADR-005)
 
-Will probe declared facilitator(s) per rail (built-in registry:
-CDP, PayAI, x402.org/facilitator). Per-rail facet array under
-`detail.facilitator_fitness`. Healthy CDP rails are NOT masked by
-degraded non-CDP rails. Identity source: declared
-`extensions.bazaar.facilitator` field, NOT tx-`from` inference.
+Probes the merchant's declared facilitator(s) `/verify` endpoint and emits a per-rail fitness facet under `detail.facilitator_fitness`. Closes the v0.3.2 gap where `indexing.indexer_state: not_applicable_non_cdp` correctly avoided misattribution but offered no positive fitness signal for non-CDP services.
+
+**Identity source: declared `extensions.bazaar.facilitator` field, NOT tx-`from` inference.** Load-bearing for gasless rails (SKALE+PayAI per TKCollective's fixture offer) where the buyer-side tx `from` is the gasless relayer, not the facilitator.
+
+**Built-in registry** (`src/bazaar/facilitator-registry.json`) ships with three facilitators known to v0.3.4: CDP, PayAI, x402.org/facilitator. Unknown facilitators emit `facilitator_fitness: unknown` rather than attempting structural probing. New facilitators land as PRs adding entries to the registry.
+
+**States (`FacilitatorFitnessState`):**
+
+- `ok` — `/verify` returns 2xx within timeout, or 4xx (facilitator responsive; rejection of the malformed probe payload is expected). Status: pass.
+- `degraded` — 5xx that recovers on retry within bounded backoff (500ms / 1s / 2s per the @mkmkkkkk #1065 pattern). Status: pass — facet surfaces but verdict not flipped.
+- `unreachable` — consistent failure across all bounded retries (TCP refused / TLS error / persistent 5xx / timeout). Status: info → rolls up to `upstream_issue` verdict, exit 3.
+- `unknown` — facilitator not in registry, or no declaration available, or no probe attempted.
+
+**Facet shape (`detail.facilitator_fitness`):**
+
+```typescript
+{
+  rails: Array<{
+    rail: number;              // 0-indexed position in accepts[]
+    network: string;           // e.g. "eip155:8453", "solana:..."
+    facilitator: string | null;
+    identity_source: "declared" | "inferred-from-tx" | "unknown";
+    fitness: FacilitatorFitnessState;
+    diagnostic?: string;
+  }>;
+  summary: { ok: number; degraded: number; unreachable: number; unknown: number };
+}
+```
+
+**Multi-rail synthesis:** healthy rails are NOT masked by degraded/unreachable rails. Per-rail array is the canonical shape; downstream consumers (`anchor-x402` mapper, leaderboards) bucket on `summary.unreachable > 0`.
+
+**v0.3.4 MVP scope:** manifest-level declaration applies to all rails uniformly (single probe per facilitator URL, cached for the run duration). Per-`accepts[i].facilitator` override deferred to v0.4+ if an operator surfaces the need.
+
+**Probe protocol:** POST to `<facilitator>/verify` with a minimal, structurally-valid but signature-invalid payload (`{ probe: "x402trace-fitness", x402Version: 2 }`). Same surface a malformed buyer would hit; facilitators that accept normal traffic accept this. The probe tests reachability, not authorisation — 4xx responses are read as `ok` (facilitator is responsive).
+
+**Cross-facet precedence** (per `src/bazaar/diagnose-rules.md`): `service_unreachable` (I, future) > `upstream_stuck.cause` (K) > `upstream_issue` (any-rail-unreachable here) > `facilitator_fitness.degraded` (facet only) > `host_pollution` (L) > `looks_correct`. A DNS-failing service skips the facilitator probe entirely once I's top-level verdict pre-empts.
+
+Voices: @Cryptor (Discord 2026-05-21 — CDP-only-by-design correction), @TomSmart_ai (mapper integration consumer), @Cinderwright (#1065 PayAI alternative + 3s auto-retry workaround). Canonical multi-rail fixture: Ferj/@hypeprinter007-stack's `anchor-x402` (3 rails: Base USDC CDP + Solana USDC CDP + JPY Coin Polygon non-CDP).
 
 ### `reachability` (X402-52 / I, ADR-006) — pending implementation
 
