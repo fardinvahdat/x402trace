@@ -291,14 +291,60 @@ Probes the merchant's declared facilitator(s) `/verify` endpoint and emits a per
 
 Voices: @Cryptor (Discord 2026-05-21 — CDP-only-by-design correction), @TomSmart_ai (mapper integration consumer), @Cinderwright (#1065 PayAI alternative + 3s auto-retry workaround). Canonical multi-rail fixture: Ferj/@hypeprinter007-stack's `anchor-x402` (3 rails: Base USDC CDP + Solana USDC CDP + JPY Coin Polygon non-CDP).
 
-### `reachability` (X402-52 / I, ADR-006) — pending implementation
+### `reachability` (X402-52 / I, ADR-006)
 
-Will run multi-probe reachability tests against the service URL.
-Top-level `service_unreachable` verdict fires only when N consecutive
-probes (default 3, spaced ≥5 min) all fail with the same
-failure-mode. Single-probe failure emits the facet under existing
-`implementation_issue` with an INFO note. Probe-history state inlined
-in JSONL log via new `bazaar.probe_attempt` event discriminant.
+Probes the service URL at the network layer (DNS / TCP / TLS / HTTP) with bounded timeout + bounded retry. Classifies the outcome into one of:
+
+| State | Status | Cause | Verdict rollup |
+|---|---|---|---|
+| `ok` | pass | — | unchanged (does not affect verdict) |
+| `unreachable_first_probe` | info | dns_failure / tcp_refused / tls_error / timeout | folds to existing `implementation_issue` / `upstream_issue` with INFO note — does NOT promote to top-level |
+| `unreachable_first_probe` | info | persistent_5xx | folds to existing `upstream_issue` (server-malfunction, NOT unreachability) — never promotes to top-level |
+| `unreachable` (consensus met) | info | dns_failure / tcp_refused / tls_error / timeout | **promotes to top-level `service_unreachable` verdict (exit 3)**, pre-empts all other checks |
+
+**Multi-probe consensus is required for top-level promotion.** Single-probe failure emits the facet but does NOT fire `service_unreachable`. The verdict synthesizer reads `consensus_met` on the facet to discriminate.
+
+Consensus requires N consecutive matching probes (default 3 via `--unreachable-consensus-count`) within the per-cause window. Per-cause window table (locked 2026-05-29 with @TomSmart_ai endorsement; reasoning in [aios/decisions/adr-006-probe-history-impl-notes-2026-05-29.md](../../aios/decisions/adr-006-probe-history-impl-notes-2026-05-29.md)):
+
+| Cause | Default window | Rationale |
+|---|---|---|
+| `dns_failure` | 5 min | DNS TTLs are fast; NXDOMAIN-over-N-probes is the cleanest fastest-converging signal |
+| `tcp_refused` | 15 min | Transient sources: LB reaping, deploy churn |
+| `tls_error` | 30 min | TLS-1.3 / ALPN / cert rotation edge cases (per TomSmart's 6×200 TLS-handshake-fail-but-HTTP-recovers sample) |
+| `timeout` | 15 min | Same transient class as `tcp_refused` |
+| `persistent_5xx` | n/a (out-of-band) | Within ONE probe attempt's bounded retry loop (3 attempts at 500ms). Rolls to `upstream_issue`, not `service_unreachable` |
+
+Operators scale all windows uniformly via `--unreachable-interval-multiplier <n>`. Per-cause individual flags deferred to v0.4+ if an operator surfaces the need.
+
+**Probe-history state (the architectural shift):** v0.3.4's `reachability` is the **first stateful verdict** in x402trace. Prior verdicts (looks_correct / implementation_issue / upstream_issue / upstream_stuck / service_unreachable's single-probe path) were deterministic-per-probe — they only consumed data from the current `bazaar-check` invocation. Cross-probe consensus requires the engine to read prior probe state.
+
+Resolved: **inline in JSONL log via the new `bazaar.probe_attempt` event discriminant** (see [src/decoder/schema.md](../decoder/schema.md)). Re-invocations of `bazaar-check --probe-history-log <file>` parse the same JSONL log the user already manages. External state directory (`~/.x402trace/probe-history/`) rejected — preserves the local-first stateless property and avoids stale-cache failure modes.
+
+**Facet shape (`detail.reachability`):**
+
+```typescript
+{
+  state: "ok" | "unreachable_first_probe" | "unreachable";
+  unreachable_cause?: "dns_failure" | "tcp_refused" | "tls_error" | "timeout" | "persistent_5xx";
+  probe_count: number;          // current + prior matching probes from log history
+  consensus_threshold: number;  // configured threshold (default 3)
+  consensus_met: boolean;       // true → verdict synthesizer promotes to service_unreachable
+  diagnostic?: string;          // one-line outcome description
+  consensus_window_ms?: number; // effective window applied (post-multiplier)
+}
+```
+
+**Cross-facet precedence** (per the canonical chain documented at the top of this file):
+
+```
+service_unreachable (I) > upstream_stuck.cause (K) > upstream_issue > facilitator_fitness facet (G) > host_pollution facet (L) > looks_correct
+```
+
+A service that fails DNS doesn't reach the upstream surfaces K / G / L probe — those checks may emit info-status results, but the verdict synthesizer ignores them when reachability fires `service_unreachable`. Anti-pattern documented (per ADR-006): **don't key verdicts on third-party single-snapshot status fields** — third-party mapper status (e.g. TomSmart's mapper.db `status IS NULL or 0` from his 2026-05-28 traceroute, which showed 86.7% false-positive rate) is stale by design. Always use multi-probe consensus from x402trace's own probes.
+
+**Probe protocol:** GET to `serviceUrl` with bounded timeout (default 10s). On 2xx/3xx/4xx → `ok` (service responsive; probe-payload-rejection is expected for unauthenticated GET on x402 endpoints — they return 402). On 5xx → retry up to 3 attempts within the probe; 3 consecutive 5xx → `persistent_5xx`. On network error → classify via `classifyFetchError` against the underlying error code (`ENOTFOUND`, `ECONNREFUSED`, `CERT_*`, `EPROTO`, `AbortError`).
+
+Voices: divigent probe (2026-05-23, DNS-fail real example) + @TomSmart_ai (mapper.db cohort evidence + 2026-05-28 traceroute anti-evidence that reshaped the AC). @AsaiShota's test-echo-cdp as the false-positive sentinel (payload-correct, indexed, reachable → must NOT mis-classify).
 
 ## Adding a new diagnose rule
 

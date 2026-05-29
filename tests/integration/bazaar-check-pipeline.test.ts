@@ -111,7 +111,7 @@ function buildFetcher(
 }
 
 describe("bazaar-check pipeline (hermetic)", () => {
-  it("returns exit 0 + looks_correct when all seven checks pass", async () => {
+  it("returns exit 0 + looks_correct when all eight checks pass", async () => {
     const stdout = captureStream();
     const stderr = captureStream();
     const code = await runBazaarCheckCommand(
@@ -126,7 +126,7 @@ describe("bazaar-check pipeline (hermetic)", () => {
     expect(code).toBe(0);
     const out = JSON.parse(stdout.buf.join(""));
     expect(out.verdict.kind).toBe("looks_correct");
-    // X402-51 (G) — facilitator-fitness appended as 7th check (additive per ADR-005).
+    // X402-52 (I) — reachability appended as 8th check (additive per ADR-006).
     expect(out.results.map((r: { check: string }) => r.check)).toEqual([
       "well-known",
       "challenge",
@@ -135,6 +135,7 @@ describe("bazaar-check pipeline (hermetic)", () => {
       "propagation",
       "host-pollution",
       "facilitator-fitness",
+      "reachability",
     ]);
   });
 

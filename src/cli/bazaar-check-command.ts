@@ -36,6 +36,26 @@ export interface BazaarCheckCommandOptions {
    * specific paid resource.
    */
   readonly endpoint?: string;
+  /**
+   * X402-52 (I, ADR-006) — JSONL log path for cross-invocation probe
+   * history. When supplied, the reachability check reads prior
+   * `bazaar.probe_attempt` records and appends the current probe. Without
+   * it, the reachability check runs single-probe-only (top-level
+   * `service_unreachable` verdict never fires; the facet still emits
+   * with `state: unreachable_first_probe`).
+   */
+  readonly probeHistoryLog?: string;
+  /**
+   * X402-52 (I) — number of consecutive matching probes required for
+   * top-level `service_unreachable` verdict promotion. Default 3.
+   */
+  readonly unreachableConsensusCount?: number;
+  /**
+   * X402-52 (I) — uniform scalar over the per-cause consensus windows
+   * (DNS 5min, TCP 15min, TLS 30min, timeout 15min, persistent_5xx
+   * out-of-band). Default 1. Operators wanting paranoia bump to 2 or 3.
+   */
+  readonly unreachableIntervalMultiplier?: number;
 }
 
 export interface BazaarCheckRunContext {
@@ -110,12 +130,36 @@ export async function runBazaarCheckCommand(
     else ctx.stderr.write(`${note}\n`);
   }
 
+  // X402-52 (I) — validate the unreachable-* knobs if supplied.
+  const consensusCount = opts.unreachableConsensusCount;
+  if (consensusCount !== undefined && (!Number.isInteger(consensusCount) || consensusCount < 1)) {
+    ctx.stderr.write(
+      `error: --unreachable-consensus-count must be a positive integer (got '${String(consensusCount)}')\n`,
+    );
+    return EXIT_USAGE;
+  }
+  const intervalMultiplier = opts.unreachableIntervalMultiplier;
+  if (
+    intervalMultiplier !== undefined &&
+    (!Number.isFinite(intervalMultiplier) || intervalMultiplier <= 0)
+  ) {
+    ctx.stderr.write(
+      `error: --unreachable-interval-multiplier must be a positive number (got '${String(intervalMultiplier)}')\n`,
+    );
+    return EXIT_USAGE;
+  }
+
   const report = await runBazaarCheck({
     serviceUrl: service,
     chain: chainKey,
     ...(opts.payerHint !== undefined ? { payerHint: opts.payerHint } : {}),
     ...(opts.discoveryBaseUrl !== undefined ? { discoveryBaseUrl: opts.discoveryBaseUrl } : {}),
     ...(opts.endpoint !== undefined ? { endpoint: opts.endpoint } : {}),
+    ...(opts.probeHistoryLog !== undefined ? { probeHistoryLog: opts.probeHistoryLog } : {}),
+    ...(consensusCount !== undefined ? { unreachableConsensusCount: consensusCount } : {}),
+    ...(intervalMultiplier !== undefined
+      ? { unreachableIntervalMultiplier: intervalMultiplier }
+      : {}),
     fetcher,
   });
 
@@ -203,6 +247,15 @@ function formatVerdictLine(report: BazaarReport, color: Colorizer): string {
     return color.paint(
       "red",
       `✗ VERDICT (exit 2, implementation issue): ${v.message}\n  failed checks: ${v.failedChecks.join(", ")}`,
+    );
+  }
+  if (v.kind === "service_unreachable") {
+    // X402-52 (I, ADR-006) — top-level service_unreachable verdict.
+    // Pre-empts upstream_stuck / upstream_issue / implementation_issue
+    // because the service never reached the surfaces those diagnose.
+    return color.paint(
+      "yellow",
+      `○ VERDICT (exit 3, service unreachable): ${v.message}\n  cause: ${v.unreachableCause} (consensus ${v.probeCount}/${v.consensusThreshold})`,
     );
   }
   return color.paint(

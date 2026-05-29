@@ -44,14 +44,23 @@ import { join } from "node:path";
 // 540 KB gives ~32 KB headroom for I (probe-history state + 5+ new
 // reachability fixtures: NXDOMAIN, TCP refused, TLS error, timeout,
 // persistent_5xx, plus the JSONL probe_attempt event discriminant).
-const MAX_UNPACKED_BYTES = 540 * 1024;
+// X402-52 (I) raise 2026-05-30: 540 → 600 KB. I added ~52 KB
+// (reachability + probe-history + clock modules + 37 unit-test cases
+// + new top-level service_unreachable verdict variant + bazaar.probe_attempt
+// schema doc + per-cause windows + 3 new CLI flags). 561 KB after I.
+// 600 KB gives ~40 KB headroom; revisit at v0.4 scope-eval.
+const MAX_UNPACKED_BYTES = 600 * 1024;
 // v0.3.0: 96 → v0.3.1 + PR #69 fixtures: 100 → v0.3.2 cycle adds (json-api
 // stability + D.5 extensions-bazaar + D.2 propagation + D.3 facilitator-
 // detect): 102. Raised to 110 with breathing room for X402-47 fixture
 // consumption + future v0.3.x facets. Reduce again when the next major
 // surface cleanup happens (e.g., extracting the legacy `detail.status`
 // field on indexing).
-const MAX_FILES = 110;
+// X402-52 (I) raise 2026-05-30: 110 → 120. I adds 3 new source modules
+// (reachability.ts, probe-history.ts, clock.ts) + their .d.ts companions
+// in dist/ — current count 115. 120 gives 5-file headroom; revisit at
+// v0.4 scope-eval alongside MAX_UNPACKED_BYTES.
+const MAX_FILES = 120;
 const DIST_DIR = "dist";
 
 if (!existsSync(DIST_DIR)) {

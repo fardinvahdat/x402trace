@@ -204,12 +204,12 @@ describe("bazaar-check JSON API stability (X402-44, ADR-004 Pillar 2)", () => {
     expect(liveJson.verdict["exitCode"]).toBe(snapshot.verdict["exitCode"]);
   });
 
-  it("all seven canonical check names are present in fixed order (catches removal / reordering of a check)", () => {
+  it("all eight canonical check names are present in fixed order (catches removal / reordering of a check)", () => {
     const snapshot = loadSnapshot() as {
       results: ReadonlyArray<{ check: string }>;
     };
     const checkNames = snapshot.results.map((r) => r.check);
-    // X402-51 (G) — facilitator-fitness appended as 7th check (additive per ADR-005).
+    // X402-52 (I) — reachability appended as 8th check (additive per ADR-006).
     expect(checkNames).toEqual([
       "well-known",
       "challenge",
@@ -218,6 +218,7 @@ describe("bazaar-check JSON API stability (X402-44, ADR-004 Pillar 2)", () => {
       "propagation",
       "host-pollution",
       "facilitator-fitness",
+      "reachability",
     ]);
   });
 });

@@ -83,6 +83,9 @@ interface BazaarCheckFlags {
   discoveryBaseUrl?: string;
   timeoutMs?: string;
   endpoint?: string;
+  probeHistoryLog?: string;
+  unreachableConsensusCount?: string;
+  unreachableIntervalMultiplier?: string;
 }
 
 interface VersionsFlags {
@@ -310,6 +313,18 @@ export async function runCli(argv: readonly string[], ctx: CliContext): Promise<
       "--endpoint <paid-url>",
       "Per-route 402 probe mode (D.4): skip root /.well-known/x402 and fetch the 402 challenge from this paid URL instead. For services that only publish per-route.",
     )
+    .option(
+      "--probe-history-log <path>",
+      "X402-52 (I): JSONL log path for cross-invocation reachability probe history. When supplied, reads prior bazaar.probe_attempt records to compute multi-probe consensus + appends current probe. Without it, the reachability check runs single-probe-only.",
+    )
+    .option(
+      "--unreachable-consensus-count <n>",
+      "X402-52 (I): Consecutive matching probes required to promote to top-level service_unreachable verdict (default 3).",
+    )
+    .option(
+      "--unreachable-interval-multiplier <n>",
+      "X402-52 (I): Uniform scalar over per-cause consensus windows (DNS 5min / TCP 15min / TLS 30min / timeout 15min; default 1). Bump to 2 or 3 for paranoia.",
+    )
     .action(async (service: string, flags: BazaarCheckFlags) => {
       const log = flags.log as LogFormat | undefined;
       const chain = flags.chain as "base-sepolia" | "base" | undefined;
@@ -324,6 +339,17 @@ export async function runCli(argv: readonly string[], ctx: CliContext): Promise<
             : {}),
           ...(flags.timeoutMs !== undefined ? { timeoutMs: Number(flags.timeoutMs) } : {}),
           ...(flags.endpoint !== undefined ? { endpoint: flags.endpoint } : {}),
+          ...(flags.probeHistoryLog !== undefined
+            ? { probeHistoryLog: flags.probeHistoryLog }
+            : {}),
+          ...(flags.unreachableConsensusCount !== undefined
+            ? { unreachableConsensusCount: Number(flags.unreachableConsensusCount) }
+            : {}),
+          ...(flags.unreachableIntervalMultiplier !== undefined
+            ? {
+                unreachableIntervalMultiplier: Number(flags.unreachableIntervalMultiplier),
+              }
+            : {}),
         },
         { stdout: ctx.stdout, stderr: ctx.stderr, env: ctx.env },
       );

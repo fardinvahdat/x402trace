@@ -36,13 +36,37 @@ import type {
   CheckResult,
   IndexerState,
   PaymentPayloadCapture,
+  ReachabilityFacet,
   SettleResponseCapture,
   UpstreamStuckCause,
 } from "./types.js";
 import { evaluatePaymentPayloadEchoGap } from "./payment-payload-rules.js";
 
 const IMPLEMENTATION_CHECKS = new Set(["well-known", "challenge", "self-payment"]);
-const UPSTREAM_CHECKS = new Set(["indexing", "propagation", "facilitator-fitness"]);
+const UPSTREAM_CHECKS = new Set(["indexing", "propagation", "facilitator-fitness", "reachability"]);
+
+/**
+ * X402-52 (I, ADR-006) — check if the reachability facet has reached
+ * cross-probe consensus on a network-layer unreachable cause. When
+ * true, the verdict synthesizer promotes to top-level
+ * `service_unreachable` (pre-empts all other verdict paths).
+ */
+function reachabilityConsensus(results: readonly CheckResult[]): {
+  fired: boolean;
+  facet?: ReachabilityFacet;
+} {
+  const r = results.find((x) => x.check === "reachability");
+  if (!r) return { fired: false };
+  const facet = r.detail?.["reachability"] as ReachabilityFacet | undefined;
+  if (!facet) return { fired: false };
+  // persistent_5xx is out-of-band — never promotes to service_unreachable
+  // even if consensus_met is true.
+  if (facet.unreachable_cause === "persistent_5xx") return { fired: false };
+  if (facet.state === "unreachable" && facet.consensus_met) {
+    return { fired: true, facet };
+  }
+  return { fired: false };
+}
 
 /**
  * Detect whether the indexing check fired `indexer_state: processing`,
@@ -149,6 +173,23 @@ export function synthesiseVerdict(
   results: readonly CheckResult[],
   opts: SynthesiseVerdictOptions = {},
 ): BazaarVerdict {
+  // X402-52 (I, ADR-006) — service_unreachable PRE-EMPTS all other
+  // verdicts when network-layer probes reach consensus. A DNS-failing
+  // service never reached the surfaces that K/G/L/upstream_stuck/
+  // implementation_issue diagnose; surface the root cause directly.
+  const reach = reachabilityConsensus(results);
+  if (reach.fired && reach.facet) {
+    const cause = reach.facet.unreachable_cause!;
+    return {
+      kind: "service_unreachable",
+      exitCode: 3,
+      message: `service unreachable at the network layer: ${cause} across ${reach.facet.probe_count} consecutive probes within the per-cause consensus window. Other verdict checks (indexing, propagation, facilitator-fitness, host-pollution) are moot until the service responds.`,
+      unreachableCause: cause,
+      consensusThreshold: reach.facet.consensus_threshold,
+      probeCount: reach.facet.probe_count,
+    };
+  }
+
   const implementationFails = results.filter(
     (r) => r.status === "fail" && IMPLEMENTATION_CHECKS.has(r.check),
   );
