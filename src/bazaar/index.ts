@@ -25,7 +25,13 @@ import { checkChallenge, fetchChallenge, checkSelfPayment } from "./challenge.js
 import { checkHostPollution } from "./host-pollution.js";
 import { checkIndexing } from "./indexing.js";
 import { checkPropagation } from "./propagation.js";
-import type { BazaarReport, CheckResult, WellKnownManifest } from "./types.js";
+import type {
+  BazaarReport,
+  CheckResult,
+  PaymentPayloadCapture,
+  SettleResponseCapture,
+  WellKnownManifest,
+} from "./types.js";
 import { synthesiseVerdict } from "./verdict.js";
 import { checkWellKnown } from "./well-known.js";
 
@@ -60,6 +66,12 @@ export {
   type HostPollutionCheckOptions,
   type HostPollutionFetcher,
 } from "./host-pollution.js";
+export {
+  evaluatePaymentPayloadEchoGap,
+  evaluateMissingResourceObject,
+  evaluateExtensionsNotEchoed,
+  type PaymentPayloadEchoGapResult,
+} from "./payment-payload-rules.js";
 export { synthesiseVerdict } from "./verdict.js";
 
 export interface BazaarCheckOptions {
@@ -81,6 +93,27 @@ export interface BazaarCheckOptions {
    * discoverability hygiene worth preserving.
    */
   readonly endpoint?: string;
+  /**
+   * X402-50 (K, ADR-007) — optional buyer-side payment payload
+   * capture for Rule 1 (`payment_payload_missing_resource_object`).
+   * When supplied, the verdict synthesizer can attribute an
+   * `upstream_stuck` verdict to a `payload_echo_gap` cause vs an
+   * indexer-state-derived cause. Without it, Rule 1 defers (never
+   * false-positives).
+   *
+   * Supplied by proxy mode (when integrated) or fixture-replay via
+   * `tests/fixtures/bazaar/captured-responses/*.json`'s optional
+   * `mocks.paymentPayload` block.
+   */
+  readonly paymentPayloadCapture?: PaymentPayloadCapture;
+  /**
+   * X402-50 (K, ADR-007) — optional /settle response capture for
+   * Rule 2 (`extensions_not_echoed`). When supplied, the rule checks
+   * for the canonical `EXTENSION-RESPONSES: e30=` signature against
+   * the challenge-side `extensions` declaration. Without it, Rule 2
+   * defers.
+   */
+  readonly settleCapture?: SettleResponseCapture;
 }
 
 /**
@@ -117,7 +150,29 @@ export async function runBazaarCheck(opts: BazaarCheckOptions): Promise<BazaarRe
 
   // 2. 402 challenge structure (uses endpoint URL when set)
   const challengeFetch = await fetchChallenge(challengeUrl, fetcher);
-  results.push(checkChallenge(challengeUrl, challengeFetch, { expectBazaar: true }));
+  const challengeResult = checkChallenge(challengeUrl, challengeFetch, { expectBazaar: true });
+  // X402-50 (K) — surface the parsed challenge `extensions` block on
+  // the challenge check's detail so the verdict synthesizer can read
+  // it for Rule 2 (`extensions_not_echoed`) without re-parsing the
+  // raw 402 body. Additive per X402-44; existing consumers ignore.
+  if (challengeFetch.ok && challengeResult.status === "pass") {
+    const rawBody = challengeFetch.rawBody;
+    if (typeof rawBody === "object" && rawBody !== null) {
+      const challengeExtensions = (rawBody as Record<string, unknown>)["extensions"];
+      if (challengeExtensions !== undefined) {
+        results.push({
+          ...challengeResult,
+          detail: { ...(challengeResult.detail ?? {}), challengeExtensions },
+        });
+      } else {
+        results.push(challengeResult);
+      }
+    } else {
+      results.push(challengeResult);
+    }
+  } else {
+    results.push(challengeResult);
+  }
 
   // 3. Self-payment guard (uses payerHint if supplied; otherwise pass)
   if (challengeFetch.ok) {
@@ -188,6 +243,11 @@ export async function runBazaarCheck(opts: BazaarCheckOptions): Promise<BazaarRe
     serviceUrl: opts.serviceUrl,
     chain: opts.chain,
     results,
-    verdict: synthesiseVerdict(results),
+    verdict: synthesiseVerdict(results, {
+      ...(opts.paymentPayloadCapture !== undefined
+        ? { paymentPayloadCapture: opts.paymentPayloadCapture }
+        : {}),
+      ...(opts.settleCapture !== undefined ? { settleCapture: opts.settleCapture } : {}),
+    }),
   };
 }

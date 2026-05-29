@@ -48,6 +48,23 @@ interface CapturedResponseFixture {
      * bodies as `unknown` state.
      */
     readonly "discovery-merchant"?: { readonly status: number; readonly body: unknown };
+    /**
+     * X402-50 (K, ADR-007) — optional buyer-side payment-payload capture
+     * fed into the K rules via `BazaarCheckOptions.paymentPayloadCapture`.
+     * Fixtures wanting to assert `upstream_stuck_cause: payload_echo_gap`
+     * via Rule 1 (`payment_payload_missing_resource_object`) supply a
+     * payload here whose `resource` is a bare URL string. Absence ⇒
+     * Rule 1 defers; existing fixtures retain their pre-K verdicts.
+     */
+    readonly paymentPayload?: { readonly paymentPayload: Record<string, unknown> };
+    /**
+     * X402-50 (K, ADR-007) — optional /settle response capture fed into
+     * Rule 2 (`extensions_not_echoed`). Headers map uses lowercased keys.
+     */
+    readonly settle?: {
+      readonly status: number;
+      readonly headers: Readonly<Record<string, string>>;
+    };
   };
   readonly expected: {
     readonly verdict:
@@ -57,6 +74,12 @@ interface CapturedResponseFixture {
       | "upstream_stuck";
     readonly exitCode: 0 | 2 | 3;
     readonly facets?: Readonly<Record<string, unknown>>;
+    /** X402-50 (K) — optional `verdict.cause` assertion when `upstream_stuck`. */
+    readonly verdictCause?:
+      | "payload_echo_gap"
+      | "indexer_state_processing"
+      | "indexer_state_terminal"
+      | "unknown";
   };
 }
 
@@ -124,25 +147,42 @@ describe("bazaar-check captured-response fixtures (X402-47)", () => {
   });
 
   describe.each(fixtures)("$filename", ({ filename, fixture }) => {
-    it("produces the expected verdict + exit code", async () => {
-      const report = await runBazaarCheck({
+    function runFixture() {
+      return runBazaarCheck({
         serviceUrl: fixture.input.serviceUrl,
         chain: fixture.input.chain,
         fetcher: fixtureFetcher(fixture),
+        // X402-50 (K) — optional K-rule capture inputs from the fixture mocks.
+        ...(fixture.mocks.paymentPayload !== undefined
+          ? { paymentPayloadCapture: fixture.mocks.paymentPayload }
+          : {}),
+        ...(fixture.mocks.settle !== undefined ? { settleCapture: fixture.mocks.settle } : {}),
       });
+    }
 
+    it("produces the expected verdict + exit code", async () => {
+      const report = await runFixture();
       expect(report.verdict.kind).toBe(fixture.expected.verdict);
       expect(report.verdict.exitCode).toBe(fixture.expected.exitCode);
     });
 
+    if (fixture.expected.verdictCause !== undefined) {
+      it(`verdict.cause = ${fixture.expected.verdictCause} (X402-50 K)`, async () => {
+        const report = await runFixture();
+        // verdict.cause is only present on the upstream_stuck variant.
+        if (report.verdict.kind !== "upstream_stuck") {
+          throw new Error(
+            `fixture asserts verdict.cause but verdict.kind is ${report.verdict.kind}; verdict.cause only applies to upstream_stuck`,
+          );
+        }
+        expect(report.verdict.cause).toBe(fixture.expected.verdictCause);
+      });
+    }
+
     if (fixture.expected.facets) {
       const facetEntries = Object.entries(fixture.expected.facets);
       it.each(facetEntries)(`facet %s matches`, async (path, expected) => {
-        const report = await runBazaarCheck({
-          serviceUrl: fixture.input.serviceUrl,
-          chain: fixture.input.chain,
-          fetcher: fixtureFetcher(fixture),
-        });
+        const report = await runFixture();
         const actual = extractFacet(report.results, path);
         expect(actual).toEqual(expected);
       });

@@ -1,5 +1,5 @@
 {
-  "$comment": "Hybrid D.3 + D.5 \u2014 facilitator settled (9 paid settles on Base mainnet 2026-05-12 \u2192 2026-05-19) but CDP discovery returns 0 resources for our payTo (l30DaysTotalCalls frozen at 1 since 2026-05-09) \u2192 indexer_state: processing \u2192 upstream_stuck verdict. extensions.bazaar uses BodyDiscovery shape (info.input + info.output + schema). Real-prod capture from agentoracle.co/research 2026-05-23, third independent operator in the canonical x402-foundation/x402#2207 cluster alongside RipperMercs' TensorFeed row and Max's polyodds.bet pattern \u2014 three structurally-identical upstream_stuck verdicts across multi-route product-discovery for AI research (AgentOracle), multi-route content (TensorFeed), and prediction-market discovery (polyodds.bet) validate the D.3 + D.5 taxonomy.",
+  "$comment": "Hybrid D.3 + D.5 \u2014 facilitator settled (9 paid settles on Base mainnet 2026-05-12 \u2192 2026-05-19) but CDP discovery returns 0 resources for our payTo (l30DaysTotalCalls frozen at 1 since 2026-05-09) \u2192 indexer_state: processing \u2192 upstream_stuck verdict. extensions.bazaar uses BodyDiscovery shape (info.input + info.output + schema). Real-prod capture from agentoracle.co/research 2026-05-23, third independent operator in the canonical x402-foundation/x402#2207 cluster alongside RipperMercs' TensorFeed row and Max's polyodds.bet pattern \u2014 three structurally-identical upstream_stuck verdicts across multi-route product-discovery for AI research (AgentOracle), multi-route content (TensorFeed), and prediction-market discovery (polyodds.bet) validate the D.3 + D.5 taxonomy. X402-50 (K, ADR-007) addendum 2026-05-29: extended with paymentPayload + settle mock blocks so the K rule pair fires deterministically \u2014 Rule 1 (bare-string resource) + Rule 2 (e30= signature + challenge-side non-empty extensions). Pre-fix snapshot asserts upstream_stuck.cause = payload_echo_gap; pair with the @TKCollective post-fix delta (PR #99) once both fixtures live alongside each other.",
   "scenario": "agentoracle-upstream-stuck-body-discovery",
   "input": {
     "serviceUrl": "https://agentoracle.co/research",
@@ -766,6 +766,23 @@
       "body": {
         "resources": []
       }
+    },
+    "paymentPayload": {
+      "paymentPayload": {
+        "scheme": "exact",
+        "network": "eip155:8453",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "amount": "20000",
+        "payTo": "0xdF90200B0031051BbF7a66BB9387d2Ecf599e109",
+        "resource": "https://agentoracle.co/research"
+      }
+    },
+    "settle": {
+      "status": 200,
+      "headers": {
+        "extension-responses": "e30=",
+        "content-type": "application/json"
+      }
     }
   },
   "expected": {
@@ -773,6 +790,7 @@
     "exitCode": 3,
     "facets": {
       "indexing.indexer_state": "processing"
-    }
+    },
+    "verdictCause": "payload_echo_gap"
   }
 }

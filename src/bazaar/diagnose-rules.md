@@ -21,6 +21,7 @@ implementation companion.
 | `indexing` | pass / info | upstream_stuck or upstream_issue on info | X402-46 (ADR-004) |
 | `propagation` | pass / info | upstream_issue on info | X402-45 (ADR-004) |
 | `host-pollution` | pass / info | none — warning, not a verdict change | X402-53 (ADR-008) |
+| K rule pair (payment-payload echo gap) | — | `upstream_stuck.cause` discriminator on existing `upstream_stuck` verdict | X402-50 (ADR-007) |
 | `facilitator-fitness` (v0.3.4) | pass / info | upstream_issue on info per rail | X402-51 (ADR-005) |
 | `reachability` (v0.3.4) | pass / info | service_unreachable when consensus met | X402-52 (ADR-006) |
 
@@ -209,6 +210,45 @@ hosts (`api.anchor-x402.com`, `chat.anchor-x402.com`,
 `1c09pdnrx1.execute-api.us-east-1.amazonaws.com`); 9 resource paths
 each indexed on 2+ hosts. Captured-response fixture:
 `tests/fixtures/bazaar/captured-responses/anchor-x402-host-pollution.json`.
+
+### K rule pair (X402-50, ADR-007) — payment-payload echo gap
+
+Two rules refine the `upstream_stuck` verdict with attribution. Both require buyer-side capture data (proxy mode or fixture replay); in standalone mode they defer.
+
+**Rule 1: `payment_payload_missing_resource_object`**
+
+Fires when `paymentPayload.resource` is a bare URL string instead of `{url, description?, mimeType?}` object. Per `PaymentPayloadV2Schema` in `@x402/core@2.11.0`, the object form is canonical; a bare string returns CDP HTTP 400 `'paymentPayload' is invalid` and skips bazaar processing.
+
+```typescript
+// ❌ Triggers Rule 1
+paymentPayload.resource = "https://api.example.com/v1/x";
+
+// ✓ Correct
+paymentPayload.resource = {
+  url: "https://api.example.com/v1/x",
+  description: "Anchor endpoint",
+  mimeType: "application/json",
+};
+```
+
+**Rule 2: `extensions_not_echoed`**
+
+Fires when both of these are true:
+1. The /settle response carries `EXTENSION-RESPONSES: e30=` (base64 for `{}` — the canonical "extensions absent" signature).
+2. The upstream 402 challenge declared a non-empty `extensions` block.
+
+Both conditions are load-bearing. The `e30=` signature alone is not enough — bazaar-disabled services legitimately return `{}`. The challenge-side non-empty declaration is what makes the gap diagnosable as "bazaar opted in but the extensions weren't echoed back."
+
+**`verdict.cause` precedence:**
+
+1. `payload_echo_gap` if either rule fired.
+2. `unknown` (capture-checked sentinel) when both rules ran and both returned false. This is @AsaiShota's contrast case (payload-correct, still stuck) — going to `unknown` instead of a narrower attribution prevents false-positive routing.
+3. `indexer_state_processing` when K capture was NOT supplied AND indexer state is `processing`.
+4. `unknown` otherwise.
+
+**Reference implementation pattern (operator-side remediation):** see [@RipperMercs's tensorfeed `worker/src/cdp-facilitator.ts`](https://github.com/RipperMercs/tensorfeed/blob/main/worker/src/cdp-facilitator.ts). The canonical fix shape lives there + in-repo at `tests/fixtures/bazaar/captured-responses/agentoracle-upstream-stuck-body-discovery.json` (pre-fix) paired with the post-fix delta row from @TKCollective's contributed fixture.
+
+**Contrast voice (false-positive sentinel):** `tests/fixtures/bazaar/captured-responses/test-echo-cdp-stuck-cause-unknown.json` is the canonical guard. Payload is well-formed, extensions echo properly, but the listing is still stuck. K rules must NOT route this to `payload_echo_gap`; the fixture asserts `verdict.cause === "unknown"`.
 
 ### `facilitator-fitness` (X402-51 / G, ADR-005) — pending implementation
 

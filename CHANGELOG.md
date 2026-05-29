@@ -9,9 +9,42 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-First entry in the v0.3.4 cycle. L (host_pollution) is the first of four v0.3.4 scope items to land (K + G + I follow).
+v0.3.4 cycle. L (host_pollution) shipped first (PR #101); **K (payment-payload echo gap) follows here**. G + I remain pending implementation.
 
-### Added
+### Added (K — X402-50)
+
+- **K rule pair: `payment_payload_missing_resource_object` + `extensions_not_echoed`** ([X402-50](https://vahdatfardin.atlassian.net/browse/X402-50), per ADR-007). Two diagnose rules that refine the existing `upstream_stuck` verdict with attribution to a specific root cause. Voices: @RipperMercs (TensorFeed canonical writeup, 1 → 29 indexed in <1hr) + @TKCollective (44-line patch, 16+d stuck → 22min indexed). @AsaiShota's contrast case (payload-correct, still stuck) baked into AC as the false-positive sentinel via the `test-echo-cdp-stuck-cause-unknown.json` fixture.
+- **New `verdict.cause` discriminator on the `upstream_stuck` variant** — values: `payload_echo_gap | indexer_state_processing | indexer_state_terminal | unknown`. Strictly additive per X402-44; exit-code surface unchanged (still 3 for upstream_stuck regardless of cause). Downstream consumers (TomSmart_ai's mapper, @poteshniy's `/v1/reputation`) get a discriminator they can bucket stuck listings on without re-implementing payload introspection.
+- **Captured-response fixture schema extended with optional `mocks.paymentPayload` + `mocks.settle` blocks** so fixtures can simulate K's buyer-side input data. The fixture harness threads these into `runBazaarCheck` via the new `paymentPayloadCapture` + `settleCapture` options on `BazaarCheckOptions`. Existing fixtures (d2/d3/d5/host-pollution) work unchanged — K rules defer when no capture is supplied.
+- **`agentoracle-upstream-stuck-body-discovery.json` pre-fix fixture extended** with paymentPayload (bare-string resource, triggers Rule 1) + settle (`e30=` header, triggers Rule 2) + new `expected.verdictCause: "payload_echo_gap"` assertion. Paired with @TKCollective's post-fix delta-row fixture in [PR #99](https://github.com/fardinvahdat/x402trace/pull/99) (held against K's landing).
+- **`test-echo-cdp-stuck-cause-unknown.json` new fixture** — @AsaiShota-style contrast voice. Payload is well-formed object, extensions properly echoed, but indexer still shows processing. Asserts `verdict.cause === "unknown"` — the canonical false-positive sentinel for K's attribution precision.
+
+### Changed
+
+- **`bazaar-check` JSON output: `verdict.cause` field added to the `upstream_stuck` variant.** Additive per X402-44 contract (no field renamed/removed/reordered). Snapshot fixture regenerated.
+- **Challenge check's `detail` field now carries `challengeExtensions`** on the pass path — the parsed `extensions` block from the 402 body, exposed so the verdict synthesizer can read it for Rule 2's challenge-side non-empty check without re-parsing the raw body. Additive per X402-44.
+
+### Documentation
+
+- **`src/bazaar/diagnose-rules.md`** — new K rule pair section + the contrast-voice false-positive sentinel pattern. Updates the documented anti-patterns alongside ADR-006's "don't key on third-party single-snapshot status fields."
+- **`src/bazaar/json-api.md`** — documents `verdict.cause` discriminator + the four cause values + K-rule capture inputs + the capture-checked-sentinel rule for AsaiShota's case.
+
+### Internal (K — X402-50)
+
+- **`src/bazaar/payment-payload-rules.ts`** — new module with `evaluateMissingResourceObject`, `evaluateExtensionsNotEchoed`, and the aggregator `evaluatePaymentPayloadEchoGap`. Pure functions; no fetch/IO. Reference impl pattern lives in repo (linked from the docs); x402trace does NOT import or depend on @RipperMercs's tensorfeed code.
+- **`src/bazaar/types.ts`** — `UpstreamStuckCause`, `PaymentPayloadCapture`, `SettleResponseCapture` types added. `BazaarVerdict.upstream_stuck` variant gains the required `cause` field.
+- **`src/bazaar/verdict.ts`** — `synthesiseVerdict` accepts an optional `SynthesiseVerdictOptions` arg carrying K-rule capture inputs. Computes `cause` via the precedence rule: K fired → `payload_echo_gap`; both rules ran and returned false → `unknown` (capture-checked sentinel); else indexer-state-derived → `indexer_state_processing` (or `unknown`).
+- **Test count:** v0.3.4 L cycle shipped 544 passed → **570 passed + 4 skipped (574 total)** in this K cycle. +26 from the 21 new unit-test cases in `tests/unit/bazaar-payment-payload-rules.test.ts` + 5 new integration assertions (K verdict-cause checks + new contrast fixture).
+
+### JSON API (K — X402-50)
+
+- **Additive**: new optional `verdict.cause` field on the `upstream_stuck` variant. New optional `detail.challengeExtensions` on the challenge check's pass-path result. No existing field renamed, removed, reordered, or retyped. X402-44 contract preserved (additive change, minor-version-eligible per ADR-004 Pillar 2). TomSmart_ai's mapper-integration + @poteshniy's `agenttrust.uk/v1/reputation` API require no changes; the new field appears alongside existing data on the `upstream_stuck` variant only.
+
+---
+
+**L — X402-53 (host_pollution)** — shipped via [#101](https://github.com/fardinvahdat/x402trace/pull/101) earlier in the v0.3.4 cycle; entries below documented at that time.
+
+### Added (L — X402-53)
 
 - **`host-pollution` check** ([X402-53](https://vahdatfardin.atlassian.net/browse/X402-53), thanks @hypeprinter007-stack / Ferj 🙏 — same operator, identity-merge confirmed 2026-05-29). New diagnose-rule per ADR-008 (single-voice bypass under the D.5 precedent). The check queries CDP's merchant discovery endpoint (`/platform/v2/x402/discovery/merchant?payTo=<addr>&limit=50`) and groups returned resources by canonical path; when a path appears under more than one hostname for the same payTo, fires a listing-hygiene warning. Canonical case (per the contributed fixture at https://github.com/hypeprinter007-stack/anchor-x402/tree/main/fixtures/x402trace-L): `anchor-x402.com` indexes 25 entries for one payTo across 3 hosts, with 9 resource paths each appearing on 2 distinct hostnames. `/v1/anchor` for example lives under both `api.anchor-x402.com` and the raw API Gateway URL (`1c09pdnrx1.execute-api.us-east-1.amazonaws.com`). Code is correct, ops are leaky — same Lambda answers multiple hostnames, CDP captures the URL the buyer hit (not the canonical resource URL), the merchant index shows duplicates.
 - **New `host-pollution` JSON API facet** under `results[].detail` (additive per X402-44 contract — see [src/bazaar/json-api.md](./src/bazaar/json-api.md)). Shape: `{ state: "no_pollution" | "polluted" | "unknown" | "not_applicable_non_cdp", polluted_paths?: [{ resource_path, hosts[] }], polluted_path_count?, total_entries?, distinct_hosts?, queryUrl? }`. **The verdict synthesizer intentionally does NOT include `host-pollution` in its upstream-checks set — `looks_correct` continues to roll up to exit code 0 even when this facet fires.** Exit-code surface stays the three-value contract per ADR-004 Pillar 2; downstream consumers grep the facet for the listing-hygiene warning.
