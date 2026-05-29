@@ -408,3 +408,225 @@ Each ADR uses this template:
 ---
 
 ---
+
+## ADR-008: v0.3.4 L — host_pollution listing-hygiene verdict (single-voice bypass under D.5 precedent)
+
+- **Status:** Accepted
+- **Date:** 2026-05-29
+- **Context:** Ferj (cdp-verified, anchor-x402.com) ran `bazaar-check` against `api.anchor-x402.com` on 2026-05-27 and received `looks_correct` — yet CDP's `/discovery/merchant?payTo=0x127462e296fAc1A7F5cF33bA57bB2f0FFf5cD0B6&limit=50` returns **23 indexed entries for that single payTo, spread across 3 hosts** (`api.anchor-x402.com`, `chat.anchor-x402.com`, and the raw API Gateway URL `1c09pdnrx1.execute-api.us-east-1.amazonaws.com`). Same Lambda answers all three. `/v1/anchor` for example lives under both `api.anchor-x402.com` and the raw API Gateway URL simultaneously. Canonical `resource.url` doesn't fix it because CDP captures the URL the buyer hit, not the canonical resource URL.
+
+  This is a **listing-hygiene gap** that the existing verdict taxonomy cannot surface. The technical verdict (`looks_correct`) is correct — the code is right; the ops are leaky. Distinct from #2207 upstream-stuck cluster (which is indexer-side fault). Distinct from facilitator-fitness (which is rail-side). Root: AWS Lambda + multi-host CDN/custom-domain is a structural pattern; many operators are silently in the same state.
+
+  Naming clash: in the existing Notion v0.3.4 plan, `H` is reserved for "directory-only manifest signal" (@RipperMercs #85, still 1 voice, held). To avoid cross-doc confusion, the new candidate is filed as `L` (next available letter after F/G/H/I/J/K).
+
+  **Strictness-bar question:** Ferj is the only named voice. Default strictness bar requires ≥2 voices for promotion. v0.3.4 committed scope (K+G+I) is locked at 2-voice promotions. Three options:
+  1. Wait for 2nd voice (defer to v0.3.5)
+  2. Single-voice bypass under the D.5 precedent (ADR-004's body-discovery split, X402-43, single-voice promotion of AsaiShota via "bug pathway bypass — confirmed false-positive on legitimate body-discovery service, not feature speculation")
+  3. Defer to v0.3.5 strictly
+
+- **Decision:** **Option 2 — single-voice bypass.** Promote `candidate_L (host_pollution)` into v0.3.4 committed scope as the 4th item alongside K+G+I. Maintainer approval 2026-05-29 ("B"). Jira ticket filed under the v0.3.4 release (X402-53 or next-available).
+
+  **Bypass criteria met (matching D.5 precedent + adding cdp-verified status):**
+  1. **cdp-verified operator** (Ferj, anchor-x402.com — first contribution to land in v0.3.x scope; multiple #2207 cluster touches before this)
+  2. **Concrete reproducible curl** with 23-entry payload — anyone running multi-host AWS can verify in their own CDP listing
+  3. **Structural pattern** — AWS Lambda + custom domain is standard; many operators in the same state silently
+  4. **Additive verdict** — `extensions.bazaar.host_pollution` is new facet; doesn't change existing `looks_correct` / `upstream_stuck` / `implementation_issue` discriminator surface
+  5. **Small impl** — one CDP `/discovery/merchant?payTo=...` query + group-by-canonical-resource-path; estimated ~80 LOC + 1 fixture
+  6. **JSON API stability preserved** — additive per X402-44 contract; existing snapshot test untouched
+
+  **What lands in v0.3.4:**
+  - New `extensions.bazaar.host_pollution` facet shape: `{ hosts: [...], resource_path: "...", entries_count: N }`
+  - Detection logic in `src/bazaar/`: query CDP `/discovery/merchant?payTo=<merchant payTo>` → group by canonical resource path → flag if N distinct hosts > 1 for same path
+  - New JSONL `event` discriminant `bazaar.host_pollution` (additive)
+  - Captured-response fixture: request from Ferj via DM after ticket files (anchor-x402.com setup is the canonical case)
+  - README + `src/bazaar/json-api.md` doc update (additive)
+  - CHANGELOG `### Added` entry under v0.3.4
+
+  **What's out of scope (kept for later):**
+  - Cleanup recommendations / auto-fix (diagnostic only)
+  - Cross-merchant pollution detection (this is single-payTo, multi-host; cross-payTo is a different shape)
+  - Configurable threshold for "how many hosts is too many" — ship as `host_pollution` warning when N > 1 (binary), revisit if operators want a threshold knob
+
+- **Consequences:**
+  - **Enables.** Operators running multi-host AWS Lambda or CDN/custom-domain setups get a listing-hygiene signal. Distinguishes ops-side hygiene from code-side correctness. Ferj's class of failure is no longer silently `looks_correct`. The bazaar-check verdict taxonomy gains a new warning layer (additive to existing exit-code 0 → still 0 with the warning facet; not a new exit code).
+  - **Restricts.** No auto-fix (diagnostic only). Single-payTo focus (cross-payTo pollution is different). No threshold knob in v0.3.4 (binary "more than one host = warning").
+  - **Risks.**
+    1. **2nd voice never materializes — we shipped a rule for one named operator.** Low-medium. Mitigation: Ferj's curl is reproducible; pattern is structural (AWS Lambda + custom domain is standard). Anyone running similar infra can verify the pattern exists. The bypass is precedent-bounded, not a general weakening.
+    2. **Operators may not understand the warning** ("my code is right, why is bazaar-check complaining?"). Low. Mitigation: clear human-format remediation copy: "Your service is indexed under N hosts in CDP /discovery/merchant. Same code, multiple hostnames. Consider configuring CDN/Lambda to canonicalize to one host."
+    3. **CDP /discovery/merchant rate-limit on the new query.** Low-medium. Mitigation: cache responses for the duration of a single `bazaar-check` run; one query per merchant payTo per run.
+    4. **JSON API snapshot churn from the new facet.** Low. Strictly additive per X402-44; snapshot test asserts presence of the new optional key, downstream consumers add a single handler.
+    5. **Strictness-bar precedent weakening risk.** Low-medium. Mitigation: ADR-008 + memory `[[candidate-L-host-pollution-v034-bypass]]` document the bypass criteria explicitly. Going forward: cdp-verified + concrete reproducible curl + additive impl + small surface = bypass-eligible. NOT a general rule weakening — every criterion must hold.
+
+- **Rejected alternatives:**
+  - **Wait for 2nd voice (Option 1).** Considered. Rejected: Ferj's signal quality (cdp-verified + concrete repro + structural pattern) is high; impl is small + additive; D.5 precedent already established the bypass path. Forcing 2-voice wait when every quality marker is present would be valuing the bar's letter over its purpose (signal quality).
+  - **Defer to v0.3.5 strictly (Option 3).** Considered to keep v0.3.4 scope tight. Rejected: K+G+I are diagnose-rule additions; L is a new verdict facet — structurally orthogonal. Bundling L into v0.3.4 reuses the same audit-gate cycle. v0.3.5 may pile up with batch-scheme work + other organics; L is independent and can land alongside without sequencing conflict.
+  - **Promote L to a new top-level verdict.** Considered (parallel to `service_unreachable` in I). Rejected: `host_pollution` is a WARNING not a FAILURE — code is correct, ops are leaky. Top-level verdict would force consumers (TomSmart's mapper db, poteshniy's `/v1/reputation`) to handle a new top-level type for a refinement-warning. Facet under `extensions.bazaar` is the cheaper additive surface — same logic as ADR-007's K facet decision.
+  - **Threshold-knob configurability in v0.3.4** (`--host-pollution-threshold N`). Considered. Rejected: binary "more than one host" is the right v0.3.4 floor; threshold-knob is a v0.4+ refinement if operators ask for one.
+  - **Combine L with K (same ADR).** Considered to consolidate. Rejected: K refines an existing verdict's facet (`upstream_stuck_cause`); L adds a new facet (`host_pollution`) under a different code path (CDP `/discovery/merchant` query). Three separate concerns in v0.3.4 = three separate ADRs (ADR-005 G, ADR-006 I, ADR-007 K, ADR-008 L), same pattern as ADR-003 → D.2/D.3/D.4/D.5 in v0.3.2.
+
+- **Naming-clash resolution:** ADR-007's "Consequences" section incorrectly references "candidate_H directory-only manifest signal (still 1 voice)" as v0.4+ held. That `H` is RipperMercs #85 (Notion v0.3.4 plan's Held table). Ferj's host_pollution is a different signal; this ADR formalizes the rename to `candidate_L`. ADR-007's H reference still stands as a v0.4+ held candidate (no change to the directory-only-manifest signal).
+
+- **Reference impl is documentation, not dependency:** Ferj's anchor-x402.com setup is the canonical example. Captured-response fixture will request from Ferj via DM after the ticket is filed.
+
+- **What this means concretely for v0.3.4 cycle:**
+  - **Execution order shift:** ADR-008 (this) → X402-53 L implementation → can land first (independent of K/G/I) OR last (after K+G+I) — no sequencing constraint. Suggest landing last to keep K+G+I's ADR-005/006/007 cycle clean.
+  - **Notion plan update:** L row added to "Committed scope" table; evidence accumulation section dated 2026-05-29.
+  - **CHANGELOG forecasting:** v0.3.4's `### Added` will include all four (K + G + I + L).
+  - **Out of scope for v0.3.4, kept for v0.4+:** unchanged from ADR-007 (auto-remediation, hosted-product surface, candidate_F, candidate_H directory-only manifest, candidate_J orphaned-wallet) PLUS now `host_pollution` threshold-knob configurability + cross-payTo pollution detection.
+
+---
+
+## ADR-005: v0.3.4 G — facilitator-aware fitness check (non-CDP rail awareness)
+
+- **Status:** Accepted
+- **Date:** 2026-05-29
+- **Context:** v0.3.2 introduced a `not_applicable_non_cdp` short-circuit in `bazaar-check`'s indexing-state probe ([X402-46](https://vahdatfardin.atlassian.net/browse/X402-46)) — correctly avoids misattribution by emitting `indexing.indexer_state: not_applicable` when the merchant declares a non-CDP facilitator, since CDP `/discovery/merchant` has no knowledge of services that don't settle through it. Side effect: non-CDP services get verdict silence on the facilitator dimension. The merchant configured a non-CDP rail correctly, x402trace verdicts `looks_correct` on the technical surface, and the operator has no positive signal that the *facilitator itself* is reachable / healthy / responding within the EIP-3009 timeout window.
+
+  Voices that surfaced this gap:
+  - **@Cryptor** (Discord #general 2026-05-21 19:55 UTC) — empirical test against CDP `/discovery/merchant?payTo=...` established that **bazaar indexing is CDP-only by design** (`Only after successful transaction through CDP the 402 endpoint will be visible on Bazaar`). Corrected the `[[bazaar-indexing-spec]]` memory which had previously assumed facilitator-agnostic indexing. Spec-correction voice, not pain voice — confirms the architectural reality the new G check needs to respect.
+  - **@TomSmart_ai** (Discord DM 2026-05-23) — mapper ingests both CDP and non-CDP facilitators; will consume a `facilitator_fitness` mapper-db column as positive signal complementing the existing `cdp_indexed` column. Operator-side pain voice: non-CDP services in mapper currently have no fitness signal beyond "operator declared this facilitator," so health-monitoring is blind to non-CDP outages.
+  - **@Cinderwright** (x402-foundation/x402#1065 comment 2026-05-29 02:31 UTC) — 3rd-touch voice post-promotion. Names **PayAI's facilitator (`facilitator.payai.network`)** as a concrete CDP alternative ("more consistent on Base mainnet for small amounts"). Built **3-second auto-retry layer** that catches transient settle failures. Validates that operators do migrate between facilitators in production; fitness-per-rail is actionable, not academic.
+  - **@hypeprinter007-stack's `anchor-x402` multi-rail fixture** (offered via [#2207](https://github.com/x402-foundation/x402/issues/2207) 2026-05-21) — three rails on identical 16 paid endpoints: Base USDC (CDP), Solana USDC (CDP), JPYC Polygon (in-process self-hosted, **non-CDP**, EIP-712 domain `"JPY Coin"` v1). Multi-rail synthesis acceptance target.
+  - **@TKCollective's SKALE+PayAI gasless rail fixture** (offered via #2207 follow-up 2026-05-27) — AgentOracle's `/deep-research/skale` route on SKALE Base (chainId `1187947933`) with **gasless settlement via the PayAI facilitator**. First paid settle: tx `0x809361edad3ea6aebfacea978c6d6acf8cb32f7f03e4b5d13ee070e00c9f8e42`. Second non-CDP rail acceptance target.
+
+  Strictness-bar state: ≥2 voices met (Cryptor + TomSmart_ai are the load-bearing pair; Cinderwright, hypeprinter007, TKCollective are post-promotion validation and fixture sources). Promoted as committed v0.3.4 scope alongside K (ADR-007), I (ADR-006), L (ADR-008).
+
+- **Decision:** Add `extensions.bazaar.facilitator_fitness` facet, emitted **per declared facilitator rail**. Values are an enum: `ok | degraded | unreachable | unknown`. Top-level verdict unchanged — facet is additive under existing `looks_correct` / `upstream_issue` rollup.
+
+  **Identity source for the facilitator:** the declared `extensions.bazaar.facilitator` field on the merchant's manifest, **directly**. Not tx-`from` address inference. This is load-bearing for two reasons:
+  1. **Gasless rails** (SKALE+PayAI per TKCollective's fixture) have no on-chain settle-fee signal; tx-`from` matches the buyer's gasless-relayer address, not the facilitator's. Inference would mis-identify or null-out.
+  2. **Declared identity is the operator's intent.** Whatever the merchant declared is what should be probed. If they declared wrong, the verdict surfaces *that* — the wrongness is the signal.
+
+  **tx-`from` inference reserved as last-resort fallback for non-gasless rails only**, when the manifest omits the facilitator declaration entirely (legacy / malformed manifests). Documented as `facilitator_fitness_identity_source: declared | inferred-from-tx | unknown` in the facet for transparency.
+
+  **Detection logic per rail:**
+  1. Read declared `extensions.bazaar.facilitator` (string URL or facilitator-id from a known registry).
+  2. Resolve to facilitator probe endpoints. v0.3.4 ships with a small built-in registry (`CDP`, `PayAI`, `x402.org/facilitator`) for the named facilitators in the operator-evidence anchors; unknown facilitators emit `facilitator_fitness: unknown` with a remediation hint.
+  3. Probe `/verify` (or scheme-specific health endpoint) with a bounded timeout (default 5s).
+  4. Classify:
+     - `ok` — `/verify` returns 200 within timeout, scheme-expected response shape
+     - `degraded` — `/verify` returns 200 with elevated latency (≥3× declared `maxTimeoutSeconds` proportional) OR returns 5xx that recovers within bounded retry (≤3 attempts, exponential backoff per the @mkmkkkkk pattern from #1065)
+     - `unreachable` — `/verify` fails consistently (TCP refused / TLS error / 5xx that doesn't recover) across bounded retries
+     - `unknown` — facilitator not in built-in registry AND inference disabled / non-gasless inference returns no data
+  5. Cache result per facilitator URL for the duration of a single `bazaar-check` run.
+
+  **Multi-rail synthesis (services declaring multiple rails like `anchor-x402`):**
+  - Emit `facilitator_fitness` as an **array** when multiple distinct facilitator URLs declared across `accepts[]` or `items[].accepts[]`.
+  - Per-rail facet array: `[{ rail: 0, facilitator: "...", fitness: "ok" }, { rail: 1, facilitator: "...", fitness: "degraded" }, ...]`.
+  - **Healthy CDP rails are not masked by degraded non-CDP rails** — each rail's verdict stands on its own.
+  - Top-level rollup: if any rail is `unreachable`, exit code 3 (`upstream_issue` bucket); otherwise exit 0 (existing `looks_correct` rollup) — facet still emitted with `degraded` info even on exit 0.
+
+  **Documentation generalization:** `src/bazaar/diagnose-rules.md` adds a `facilitator_fitness` section with the registry shape (`{ facilitator_id, declared_urls, probe_endpoint, classification_thresholds }`) and the per-rail-not-composite synthesis rule.
+
+- **Consequences:**
+  - **Enables.** Positive fitness signal for non-CDP rails (TomSmart's mapper gets a `facilitator_fitness` column; Cinderwright's hosted leaderboard can grade fitness alongside spec compliance; operators running multi-rail get per-rail verdicts instead of `not_applicable_non_cdp` silence). The PayAI-vs-CDP fallback pattern that Cinderwright's #1065 workaround surfaces becomes a *signal x402trace can express* rather than tribal knowledge. Closes the `x402.org/facilitator` mock case from v0.1 — the substrate now grades all known facilitators on the same axis. hypeprinter007's multi-rail fixture becomes the canonical acceptance test for the per-rail array shape.
+  - **Restricts.** The facet is per-rail; no single-composite fitness verdict at the merchant level. Operators wanting "is my merchant healthy overall" must read the array. v0.3.4 ships with a small built-in registry (3 facilitators); unknown facilitators emit `unknown` rather than attempting structural probing — adds maintenance overhead per new facilitator, but the registry is data not code (extensible without engine changes).
+  - **Risks.**
+    1. **Built-in registry rots if facilitator endpoints change.** Medium. Mitigation: registry is in `src/bazaar/facilitator-registry.json` (data, not code); operators can override via `--facilitator-registry <path>`; documentation explicitly notes the registry shape so PRs adding new facilitators are trivial.
+    2. **Probe-side timeouts produce false `unreachable` verdicts under transient network conditions.** Medium. Mitigation: bounded retry (≤3 attempts, exponential backoff 500ms/1s/2s per the @mkmkkkkk pattern from #1065); `unreachable` requires consistent failure across all retries; `degraded` covers transient + recovered cases.
+    3. **Probing facilitators that don't expect health-checks may rate-limit or block x402trace IP.** Low-medium. Mitigation: probe `/verify` with a trivial valid-shape but invalid-signature request — same surface as a malformed buyer would hit, so facilitators that accept normal traffic accept this; document in `src/bazaar/diagnose-rules.md`. If a facilitator explicitly blocks, `unreachable` is the correct verdict.
+    4. **Gasless rail (SKALE+PayAI) introduces dual-identity ambiguity** — the buyer-side tx `from` is the gasless relayer, not the facilitator; on-chain inference would mis-identify. Resolved by declared-identity-first design above.
+    5. **Multi-rail array shape breaks downstream consumers expecting single-value.** Low. Mitigation: X402-44 snapshot-test guards the JSON API contract; v0.3.4 release notes call out the new per-rail array shape; consumers can read first element for single-rail merchants and degrade gracefully.
+    6. **The Cinderwright PayAI-as-CDP-alternative narrative could imply CDP is unreliable.** Low — narrative, not technical risk. Mitigation: facet is descriptive (`degraded`/`unreachable`), not prescriptive (no "switch to PayAI" remediation copy); operators read their own rail state and decide.
+    7. **Cross-facet interaction with K and I.** Low-medium. Mitigation: `service_unreachable` (I's top-level verdict) takes precedence over `facilitator_fitness: unreachable` — if the service itself is DNS-failing, the facilitator-fitness probe is moot. Cross-reference in ADR-006 below.
+
+- **Rejected alternatives:**
+  - **tx-`from` inference as primary identity source.** Considered (simpler — no declared-field dependency). Rejected: breaks for gasless rails (SKALE+PayAI), where buyer relayer's `from` is not the facilitator. Declared identity is more reliable and more operator-meaningful.
+  - **New top-level verdict `facilitator_unfit`.** Considered to give the gap its own verdict equal to `looks_correct` / `upstream_stuck`. Rejected per ADR-007 + ADR-008 same logic: refinement of existing taxonomy belongs in facet, not top-level. Top-level would force downstream consumers (mapper, agenttrust.uk, ideafactorylab.org) to handle a new top-level type for a per-rail signal.
+  - **Single composite multi-rail synthesis** (one fitness verdict per merchant aggregating across rails). Considered. Rejected: loses the per-rail information that's actually actionable. `anchor-x402` operator running Base USDC (CDP, `ok`) + JPYC Polygon (self-hosted, `degraded`) needs to know *which* rail is degraded, not "your merchant is partly unhealthy."
+  - **Probe-side `/settle` instead of `/verify`.** Considered (more thorough). Rejected: `/settle` writes on-chain — probing would either burn real USDC or be rejected as malformed-with-no-balance; either way produces noise. `/verify` is the read-side health surface; consistent across facilitators by spec.
+  - **Defer G to v0.4 to keep v0.3.4 surface tight.** Considered. Rejected: voices are at-or-above bar (Cryptor + TomSmart_ai with Cinderwright 3rd-touch validation); hypeprinter007 + TKCollective fixtures are in flight from #2207 cycle; deferring leaves fixtures sitting idle in `tests/fixtures/` without a consumer rule, same problem as deferring K (per ADR-007).
+  - **Configurable per-facilitator probe-timeout knob in v0.3.4.** Considered. Rejected: default 5s is reasonable for known facilitators; per-facilitator override is a v0.4+ refinement if operators ask.
+
+- **What this means concretely for v0.3.4 cycle:**
+  - **Execution order:** ADR-005 (this) → [X402-51](https://vahdatfardin.atlassian.net/browse/X402-51) G implementation. Parallel-eligible with K (X402-50), I (X402-52), L (X402-53) — facet additions don't conflict.
+  - **Fixture-driven acceptance:** hypeprinter007's `anchor-x402` multi-rail + TKCollective's `/deep-research/skale` SKALE+PayAI fixture. Both already offered; pull into `tests/fixtures/bazaar/captured-responses/` mid-cycle.
+  - **Registry data file:** `src/bazaar/facilitator-registry.json` ships with 3 entries (`CDP`, `PayAI`, `x402.org/facilitator`); additive in v0.3.5+ as new facilitators surface.
+  - **Cross-link in K + I + L ADRs:** facet ordering in `extensions.bazaar` output is documented in `src/bazaar/json-api.md` — `host_pollution` (L) and `facilitator_fitness` (G) are siblings; `upstream_stuck_cause` (K) and `reachability` (I) are siblings under their respective top-level verdicts.
+
+---
+
+## ADR-006: v0.3.4 I — `service_unreachable` top-level verdict + probe-history state + multi-probe consensus
+
+- **Status:** Accepted
+- **Date:** 2026-05-29
+- **Context:** Original I scope (committed 2026-05-27 in the v0.3.4 plan) called for a `service_unreachable` sub-verdict distinguishing network-layer-fail from x402-layer-fail. The naive shape — "DNS fails on first probe → emit `service_unreachable`" — was sketched against TomSmart_ai's mapper.db query (2026-05-24) which surfaced ~36 endpoints with `status IS NULL or 0 AND last_seen > 7d AND consecutive_fails > 3`. Three named in that query: `api.hyperclaw.app` (39 fails), `api.adprompt.io` (39 fails), `agent.paywall402.com` (66 fails). Plus the divigent probe (2026-05-23) where DNS doesn't resolve and v0.3.2 mis-classified as `implementation_issue`.
+
+  **TomSmart_ai's Tuesday-2026-05-28 traceroute is the decisive anti-evidence.** Gist: https://gist.github.com/smartflowproai-lang/c57ae6e5aaeaf038e60ce76312d1283a. Sample of **15 endpoints labeled `service_unreachable` in mapper.db** (status IS NULL or 0, bot-farm excluded):
+  - 6× HTTP 402 (working x402 — wrongly labeled unreachable)
+  - 2× HTTP 200
+  - 4× HTTP 308/404/503
+  - **2× truly unreachable: 1× NXDOMAIN, 1× connect_refused**
+
+  **13/15 (86.7%) actually reachable on re-probe.** The mapper.db status field is stale: historical state lagging endpoint churn, not current. A v0.3.4 rule keyed naively on this single field would emit ~86% false-positive `service_unreachable` verdicts. Memory `[[service-unreachable-rule-anti-evidence]]` records this anti-evidence; X402-52 comment 2026-05-29 records the AC reshape; Notion v0.3.4 plan section "Evidence accumulation — 2026-05-27 PM" carries the canonical writeup.
+
+  TomSmart's framing (verbatim DM): _"mapper.db status field is stale for most of the cohort, not a clean v0.4 filter candidate as-is. the persistent-NXDOMAIN-over-N-probes subset is clean. broader cohort needs multi-probe consensus + failure-mode classification (DNS vs TCP refused vs TLS) before service_unreachable is reliable."_
+
+  Promoted voices: **divigent probe** (DNS-fail real example) + **TomSmart_ai mapper.db** (cohort evidence + anti-evidence reshape). Strictness bar met at 2 voices; AC must now resolve the design questions the anti-evidence raised before X402-52 implementation can start.
+
+- **Decision:** `service_unreachable` ships as a **top-level verdict** (sibling to `looks_correct` / `upstream_stuck` / `implementation_issue`), gated on multi-probe consensus + failure-mode classification. The naive single-snapshot approach is rejected by anti-evidence.
+
+  **Required AC additions (vs original X402-52 scope):**
+
+  1. **Multi-probe consensus** — `service_unreachable` verdict requires probe failure across **N consecutive probes** (configurable via `--unreachable-consensus-count <n>`, default `3`, spaced ≥`--unreachable-probe-interval <duration>` default `5m`). Single-probe failure does **NOT** promote to top-level verdict.
+
+  2. **Failure-mode classification axis** — every probe attempt emits `reachability` facet with one of:
+     - `unreachable_cause: dns_failure` — NXDOMAIN, NS unreachable, no A/AAAA records
+     - `unreachable_cause: tcp_refused` — DNS resolved, port connect refused (no listener)
+     - `unreachable_cause: tls_error` — TCP connected, TLS handshake failed (cert validation, protocol mismatch, ALPN)
+     - `unreachable_cause: timeout` — TCP connected, HTTP request issued, no response within bounded window (default 10s)
+     - `unreachable_cause: persistent_5xx` — HTTP responded with 5xx consistently — *server malfunction*, **not** unreachable in network sense; emitted under `reachability` facet but does **not** promote to `service_unreachable` top-level even with consensus (synthesizes to existing `upstream_issue`)
+     Each cause carries distinct remediation copy in human-format output.
+
+  3. **Persistent-NXDOMAIN floor ships first.** Among the failure modes, NXDOMAIN-over-N-probes is the cleanest subset (TomSmart's analysis: 1/15 in his sample was true NXDOMAIN). It's the smallest cohort but the highest-confidence signal. Implementation order: NXDOMAIN-over-N-probes → tcp_refused-over-N-probes → tls_error-over-N-probes → timeout. Each subsequent failure mode adds noise; ship in order of cleanliness.
+
+  4. **Single-probe DNS-fail handling.** Emits `reachability: { state: 'unreachable_first_probe', cause: 'dns_failure' }` facet but synthesizes to existing `implementation_issue` verdict + INFO note in human-format output: _"DNS resolution failed on first probe — may be transient; re-run with `--unreachable-consensus-count 3` to confirm. Persistent NXDOMAIN promotes to top-level `service_unreachable` verdict."_ Does **NOT** promote to top-level `service_unreachable` on first probe.
+
+  **Architectural decision — probe-history state boundary:** v0.3.4's `service_unreachable` is the **first verdict that requires probe-history state**. Pre-v0.3.4 verdict taxonomy was deterministic-per-probe (every verdict emitted purely from data captured in the current `bazaar-check` invocation). Multi-probe consensus requires the engine to read prior probe state.
+
+  Resolved: **inline in JSONL log** (re-probe reads prior emissions via `event: bazaar.probe_attempt`). External state (config or cache dir under `~/.x402trace/` or similar) **rejected** — adds a new boundary the engine doesn't have, complicates uninstall, introduces stale-cache failure modes, breaks the "local-first stateless" property of v0.1..v0.3.3.
+
+  **JSONL schema addition:** new event discriminant `bazaar.probe_attempt` emitted by every reachability probe (success or fail), with fields: `attempt_seq` (1-indexed), `probed_at_ms`, `unreachable_cause` (null on success), `latency_ms`, `service_url`. Re-probe reads the merchant's last-N probe attempts from the same JSONL log to determine if consensus threshold is met. Documented additively in `src/decoder/schema.md` per the schema-stability discipline (no breaking changes to existing discriminants).
+
+  **Exit code question:** lean **fold-into-3** for v0.3.4 (`service_unreachable` → exit code 3, same as existing `upstream_issue` bucket). New exit code 4 proposed in a future v0.4 ADR with deprecation cycle. Rationale: exit-code surface is a three-value contract per ADR-004 Pillar 2; adding a new code is a breaking change for CI integrations; v0.3.4 prefers additive JSON facets over breaking exit-code expansion.
+
+  **Probe protocol detail (DNS / TCP / TLS classification):**
+  - DNS resolution via Node's `dns.resolve4` + `dns.resolve6`; classify NXDOMAIN if both fail with `ENOTFOUND` or `ESERVFAIL`.
+  - TCP connect via raw socket, classify `tcp_refused` on `ECONNREFUSED` (post-DNS-resolved).
+  - TLS handshake via Node's `tls.connect`, classify `tls_error` on `CERT_HAS_EXPIRED`, `UNABLE_TO_VERIFY_LEAF_SIGNATURE`, `ALPN_PROTOCOL_MISMATCH`, etc.
+  - HTTP `timeout` via fetch with bounded timeout; classify on `AbortError` after timeout window.
+  - `persistent_5xx` classified after ≥3 consecutive 5xx responses (separate threshold from consensus N; 5xx is consistency-of-server-error not consistency-of-unreachable).
+
+  **Documentation generalization:** `src/bazaar/diagnose-rules.md` adds a `reachability` section with the probe-history-via-JSONL pattern documented as the **first stateful verdict** and the precedent for any future stateful verdicts. Includes the explicit anti-pattern: _"Do not key verdicts on third-party single-snapshot status fields (e.g., mapper.db status=0). Use multi-probe consensus."_
+
+- **Consequences:**
+  - **Enables.** Distinguishes network-layer-fail from x402-layer-fail at the top-level verdict surface. Operators with DNS-failing services get `service_unreachable` instead of misleading `implementation_issue`. TomSmart's mapper.db `consecutive_fails > 3` cohort can be re-verified via x402trace's multi-probe pipeline and the truly-unreachable subset (~13.3% per his sample) confirmed. The probe-history-via-JSONL pattern establishes a precedent for future stateful verdicts without requiring a new state boundary.
+  - **Restricts.** Top-level `service_unreachable` requires N probes spaced ≥M minutes — a single `bazaar-check` invocation **cannot** emit `service_unreachable` from a one-shot run; the verdict requires re-probes over time. Single-probe mode emits the facet under `implementation_issue` with an INFO note (preserves backward-compat for users running `bazaar-check` once-off). Probe-history state inlined in JSONL means re-probes must operate on the same log file (operators piping `bazaar-check` output through `jq` or other transforms lose history); documented constraint.
+  - **Risks.**
+    1. **JSONL-as-state-store fragility.** Medium. If the JSONL log is rotated, truncated, or piped through a transform that drops `bazaar.probe_attempt` events, re-probe sees no history and synthesizes back to single-probe `implementation_issue` mode. Mitigation: `bazaar-check --log <file>` is the canonical pattern; document that probe-history requires the same `--log` file across runs; emit warning when consensus threshold > 1 and no prior probe-history found.
+    2. **Multi-probe latency makes `service_unreachable` only useful in scheduled re-probe contexts.** Medium. Operators doing one-shot `bazaar-check` won't see top-level `service_unreachable`. Mitigation: README + CHANGELOG explicitly call out the consensus discipline; provide an example `cron` invocation for scheduled re-probes; the `reachability` facet emits on single-probe so CI integrations get *something*.
+    3. **DNS caches between probes can mask transient NXDOMAIN recoveries.** Low-medium. Mitigation: probe explicitly with `dns.setServers(['1.1.1.1', '8.8.8.8'])` or document that operators may need to flush DNS cache; consensus interval default 5min should exceed most DNS TTLs.
+    4. **TLS handshake classification depends on Node.js error names which may change across versions.** Low. Mitigation: error-code classification is a small allowlist with fallback to `tls_error: unknown`; `dist/` compiled against the supported Node.js range (20+, 22+); test fixtures cover Node 20 and 22 explicitly per the existing CI matrix.
+    5. **`persistent_5xx` may overlap with K's `payload_echo_gap` rule or G's `facilitator_fitness: degraded`.** Medium. Mitigation: `persistent_5xx` is a server-level signal under `reachability` facet; ADR-007 (K) operates on a different evidence surface (payment-payload-side, not service-response-side); ADR-005 (G) operates on the facilitator endpoint, not the merchant service. Documented cross-facet precedence: `service_unreachable` > `upstream_stuck (payload_echo_gap)` > `facilitator_fitness` > `looks_correct`. A service that fails DNS doesn't get `upstream_stuck_cause` or `facilitator_fitness` because it never reached the upstream surfaces those probe.
+    6. **Probe behavior could be interpreted as scanning by operators of probed services.** Low-medium. Mitigation: probe emits a User-Agent string `x402trace/<version> (https://github.com/fardinvahdat/x402trace; debug-tool)`; documented in README + `src/bazaar/diagnose-rules.md`; probe rate is bounded by consensus interval (≥5min default); only probes services the user explicitly passed to `bazaar-check`.
+    7. **Stale cohort signal in mapper.db (TomSmart's anti-evidence) could recur with other third-party mappers.** Low. Mitigation: documentation anti-pattern in `src/bazaar/diagnose-rules.md` generalizes the lesson; future third-party-mapper integrations require multi-probe consensus.
+
+- **Rejected alternatives:**
+  - **Single-snapshot keying off mapper.db `status` field** (original X402-52 sketch). **Hard reject** per TomSmart's anti-evidence (86.7% false-positive rate). Documented as the canonical anti-pattern in `src/bazaar/diagnose-rules.md`.
+  - **External state directory** (`~/.x402trace/probe-history/`) for probe-history. Considered. Rejected: adds a boundary the engine doesn't have; complicates uninstall; introduces stale-cache modes; breaks the local-first stateless property; JSONL-as-state-store is the simpler architecture even with its rotation fragility.
+  - **New exit code 4 for `service_unreachable` in v0.3.4.** Considered (clean differentiation for CI). Rejected: exit-code surface is a three-value contract per ADR-004; adding a code is a breaking change; defer to v0.4 with deprecation cycle. v0.3.4 folds `service_unreachable` into existing exit 3 (`upstream_issue` bucket) with the JSON facet carrying the discriminator.
+  - **Single-probe `service_unreachable` with `--unreachable-strict-mode` flag for operators wanting consensus.** Considered. Rejected: default should be the safe shape (consensus required); flag-flipping to be more strict is the inversion of how strictness should default. Single-probe mode is the *backward-compat path* (emits facet under `implementation_issue` + INFO note), not the headline behavior.
+  - **Consensus threshold via wall-clock instead of probe-count** (e.g., "fails for ≥1 hour"). Considered. Rejected: wall-clock requires the engine to know when the first probe occurred (history-state by another name) AND introduces interval-not-probe-count ambiguity. Probe-count + interval is cleaner and matches the way operators run re-probes (N invocations of `bazaar-check`).
+  - **Inline-or-external state runtime knob.** Considered (let operators choose). Rejected: one canonical state store is simpler; the JSONL pattern dovetails with the existing `--log` discipline.
+  - **Top-level verdict `network_layer_fail` instead of `service_unreachable`.** Considered (more precise). Rejected: `service_unreachable` is the operator-language framing (per TomSmart's mapper-db column and the dogfood-pain-ranking memory); `network_layer_fail` is engine-internal jargon. Top-level verdict names face operators.
+  - **Defer I to v0.4 to keep v0.3.4 scope tight.** Considered. Rejected: 2 voices met (divigent + TomSmart) and anti-evidence reshape is in hand; deferring would leave the divigent verdict mis-classification unfixed and TomSmart's mapper integration without the column it needs. Same logic as K (ADR-007) and L (ADR-008) — voices and infrastructure are in place; deferral has no downside-protection benefit.
+
+- **What this means concretely for v0.3.4 cycle:**
+  - **Execution order:** ADR-006 (this) → [X402-52](https://vahdatfardin.atlassian.net/browse/X402-52) I implementation. Parallel-eligible with K (X402-50), G (X402-51), L (X402-53) — different code paths, no scope-overlap with each other beyond the cross-facet precedence documented in Consequences risk #5.
+  - **Fixture-driven acceptance:** divigent (DNS-fail real example) → `unreachable_cause: dns_failure` + (with consensus mode) top-level `service_unreachable`. TomSmart's 3 named examples (`api.hyperclaw.app`, `api.adprompt.io`, `agent.paywall402.com`) → run through the multi-probe pipeline and classify the surviving subset. AsaiShota test-echo-cdp (reaches 402) → `reachability: ok` (sentinel for false-positive guard, same pattern as K's contrast voice). Per Notion v0.3.4 plan "Acceptance tests against operator services" section.
+  - **JSONL schema additive change:** new `bazaar.probe_attempt` event discriminant. Document in `src/decoder/schema.md` with the probe-history pattern. Schema-stability discipline preserved (no breaking changes to existing discriminants).
+  - **New CLI flags:** `--unreachable-consensus-count <n>` (default 3) + `--unreachable-probe-interval <duration>` (default 5m). Document in README + `bazaar-check --help`.
+  - **Documentation generalization in `src/bazaar/diagnose-rules.md`:** `reachability` section + the anti-pattern callout (don't key verdicts on third-party single-snapshot status). Becomes the precedent for any future stateful verdict.
+  - **Cross-facet precedence documented:** `service_unreachable` > `upstream_stuck (payload_echo_gap)` > `facilitator_fitness` > `looks_correct`. Lands in `src/bazaar/json-api.md`.
+
+---
