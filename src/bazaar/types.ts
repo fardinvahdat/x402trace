@@ -158,3 +158,44 @@ export type IndexingStatus = "indexed" | "processing" | "not_found" | "error";
  * operator-supplied evidence via a future flag).
  */
 export type IndexerState = "indexed" | "processing" | "unknown" | "not_applicable_non_cdp";
+
+/**
+ * X402-53 (L) — host_pollution facet on the host-pollution check.
+ *
+ * Surfaces a listing-hygiene warning when CDP's merchant discovery
+ * returns the same resource path indexed under multiple hostnames for
+ * a single payTo. Distinct from the upstream-stuck indexing class:
+ * the operator's code is correct, but their CDN/Lambda answers
+ * multiple hostnames and CDP captures the URL the buyer hit (not the
+ * canonical resource URL), so the listing is leaky. ADR-008 records
+ * the rationale (single-voice bypass under the D.5 precedent).
+ *
+ *   - `no_pollution` — merchant discovery returned ≥1 entry and no
+ *     path appears on more than one host. Status: pass.
+ *   - `polluted` — one or more resource paths each appear on >1 host
+ *     in the merchant index. Status: info (warning, NOT a verdict
+ *     change — `looks_correct` still rolls up to exit 0).
+ *   - `not_applicable_non_cdp` — manifest declares non-CDP
+ *     facilitator; CDP merchant discovery not consulted.
+ *   - `unknown` — merchant discovery query failed (network, non-JSON
+ *     body, or non-2xx). Don't fire the warning on uncertainty.
+ */
+export type HostPollutionState = "no_pollution" | "polluted" | "unknown" | "not_applicable_non_cdp";
+
+export interface PollutedPath {
+  /** Canonical resource path (e.g. `/v1/anchor`). */
+  readonly resource_path: string;
+  /** Hostnames (lowercased) under which this path is indexed; sorted ascending. */
+  readonly hosts: readonly string[];
+}
+
+export interface HostPollutionFacet {
+  readonly state: HostPollutionState;
+  /** Only present when `state === "polluted"`. */
+  readonly polluted_paths?: readonly PollutedPath[];
+  readonly polluted_path_count?: number;
+  /** Total entries returned by CDP merchant discovery. */
+  readonly total_entries?: number;
+  /** Distinct hostnames across all entries. */
+  readonly distinct_hosts?: number;
+}

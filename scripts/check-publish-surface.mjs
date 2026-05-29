@@ -31,7 +31,13 @@ import { join } from "node:path";
 // facets (`upstream_stuck_cause`, `facilitator_fitness`, `reachability`)
 // plus the deferred legacy `detail.status` field cleanup on indexing per
 // ADR-004's follow-up.
-const MAX_UNPACKED_BYTES = 440 * 1024;
+// X402-53 (L) raise 2026-05-29: 440 → 480 KB. v0.3.3 shipped at ~430 KB
+// (~10 KB headroom); v0.3.4 adds 4 new facets (host_pollution +
+// facilitator_fitness + reachability + upstream_stuck_cause), the new
+// `bazaar.host_pollution` event discriminant + diagnose-rules.md +
+// facilitator-registry.json across K/G/I/L. 480 KB gives ~30 KB
+// headroom for the K + G + I implementation cycle after L lands.
+const MAX_UNPACKED_BYTES = 480 * 1024;
 // v0.3.0: 96 → v0.3.1 + PR #69 fixtures: 100 → v0.3.2 cycle adds (json-api
 // stability + D.5 extensions-bazaar + D.2 propagation + D.3 facilitator-
 // detect): 102. Raised to 110 with breathing room for X402-47 fixture

@@ -78,6 +78,17 @@ function deterministicFetcher(): typeof fetch {
         }),
       );
     }
+    if (url.includes("discovery/merchant")) {
+      // X402-53 (L) — host-pollution queries the merchant endpoint.
+      // Deterministic snapshot scenario: single host, no pollution.
+      return Promise.resolve(
+        jsonResponse({
+          pagination: { limit: 50, offset: 0, total: 1 },
+          payTo: PAY_TO,
+          resources: [{ resource: SERVICE }],
+        }),
+      );
+    }
     if (url.includes("discovery/resources")) {
       return Promise.resolve(
         jsonResponse({
@@ -193,17 +204,19 @@ describe("bazaar-check JSON API stability (X402-44, ADR-004 Pillar 2)", () => {
     expect(liveJson.verdict["exitCode"]).toBe(snapshot.verdict["exitCode"]);
   });
 
-  it("all five canonical check names are present in fixed order (catches removal / reordering of a check)", () => {
+  it("all six canonical check names are present in fixed order (catches removal / reordering of a check)", () => {
     const snapshot = loadSnapshot() as {
       results: ReadonlyArray<{ check: string }>;
     };
     const checkNames = snapshot.results.map((r) => r.check);
+    // X402-53 (L) — host-pollution appended as 6th check (additive per ADR-008).
     expect(checkNames).toEqual([
       "well-known",
       "challenge",
       "self-payment",
       "indexing",
       "propagation",
+      "host-pollution",
     ]);
   });
 });
