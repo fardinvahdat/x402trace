@@ -1,0 +1,961 @@
+{
+  "$comment": "Looks-correct delta-row paired with agentoracle-upstream-stuck-body-discovery. Same merchant (agentoracle.co/research), same well-known and challenge wire shapes — what changed is upstream: /discovery/merchant for payTo 0xdF902...e109 now returns our resource (post @RipperMercs' two-field enrichment landed at commit 71272948 on 2026-05-25; our payTo surfaced in /discovery/resources at offset 1400 on 2026-05-26 06:24 UTC, verified via /platform/v2/x402/discovery/merchant). Verdict accordingly flips upstream_stuck → looks_correct, exitCode 3 → 0, facets indexing.indexer_state processing → indexed. Pairs with the existing upstream_stuck fixture for v0.3.3 K rule pair pre/post-fix snapshot assertions in CI per @fardinvahdat's framing on x402-foundation/x402#2207. Captured from production agentoracle.co/research and https://api.cdp.coinbase.com/platform/v2/x402/discovery/merchant?payTo=0xdF90200B0031051BbF7a66BB9387d2Ecf599e109 on 2026-05-29.",
+  "scenario": "agentoracle-looks-correct-body-discovery",
+  "input": {
+    "serviceUrl": "https://agentoracle.co/research",
+    "chain": "base"
+  },
+  "mocks": {
+    "well-known": {
+      "status": 200,
+      "body": {
+        "x402Version": 2,
+        "name": "AgentOracle Verification API",
+        "description": "Pay-per-query verification API for AI agents. Every /research call returns a structured summary with citations and a confidence score. Every /evaluate call returns a per-claim verdict with confidence threshold. /deep-research uses Sonar Pro for multi-step deep analysis. Settled in USDC on Base mainnet via x402. JWS-signed receipts. v0.2 receipt spec going to IETF early June 2026.",
+        "seller": {
+          "name": "AgentOracle",
+          "operator": "TKCollective LLC",
+          "homepage": "https://agentoracle.co",
+          "contact": "joe@agentoracle.co",
+          "jwks": "https://agentoracle.co/.well-known/jwks.json"
+        },
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:8453",
+            "amount": "20000",
+            "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "payTo": "0xdF90200B0031051BbF7a66BB9387d2Ecf599e109",
+            "maxTimeoutSeconds": 300,
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            }
+          }
+        ],
+        "items": [
+          {
+            "resource": "https://agentoracle.co/research",
+            "type": "http",
+            "x402Version": 2,
+            "description": "Load when an agent needs current external facts beyond training cutoff, citations with confidence scoring, or verifiable structured research. $0.02 USDC per query on Base.",
+            "mimeType": "application/json",
+            "accepts": [
+              {
+                "scheme": "exact",
+                "network": "eip155:8453",
+                "amount": "20000",
+                "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                "payTo": "0xdF90200B0031051BbF7a66BB9387d2Ecf599e109",
+                "maxTimeoutSeconds": 300,
+                "extra": {
+                  "name": "USD Coin",
+                  "version": "2"
+                }
+              }
+            ],
+            "lastUpdated": 1779596081,
+            "metadata": {
+              "category": "research",
+              "provider": "AgentOracle (TKCollective LLC)",
+              "tags": [
+                "research",
+                "perplexity",
+                "agents",
+                "rag",
+                "verifiable"
+              ],
+              "method": "POST",
+              "bodyType": "json",
+              "homepage": "https://agentoracle.co",
+              "jwks": "https://agentoracle.co/.well-known/jwks.json"
+            },
+            "extensions": {
+              "bazaar": {
+                "bazaar": {
+                  "info": {
+                    "input": {
+                      "type": "http",
+                      "method": "POST",
+                      "bodyType": "json",
+                      "body": {
+                        "query": "What is the current price of Bitcoin?"
+                      }
+                    },
+                    "output": {
+                      "type": "json",
+                      "example": {
+                        "summary": "Bitcoin is currently trading at $67,432 with a 24h volume of $28B...",
+                        "key_facts": [
+                          "BTC price: $67,432",
+                          "24h change: +2.3%",
+                          "Market cap: $1.33T"
+                        ],
+                        "sources": [
+                          {
+                            "title": "CoinGecko",
+                            "url": "https://coingecko.com"
+                          }
+                        ],
+                        "confidence_score": 0.94,
+                        "confidence_level": "high",
+                        "freshness": "real-time"
+                      }
+                    }
+                  },
+                  "schema": {
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "type": "object",
+                    "properties": {
+                      "input": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "http"
+                          },
+                          "method": {
+                            "type": "string",
+                            "enum": [
+                              "POST",
+                              "PUT",
+                              "PATCH"
+                            ]
+                          },
+                          "bodyType": {
+                            "type": "string",
+                            "enum": [
+                              "json",
+                              "form-data",
+                              "text"
+                            ]
+                          },
+                          "body": {
+                            "properties": {
+                              "query": {
+                                "type": "string",
+                                "maxLength": 2000,
+                                "description": "Natural-language research question"
+                              },
+                              "tier": {
+                                "type": "string",
+                                "enum": [
+                                  "standard",
+                                  "deep"
+                                ],
+                                "description": "Pass deep to upgrade to Sonar Pro at $0.10"
+                              }
+                            },
+                            "required": [
+                              "query"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "method",
+                          "bodyType",
+                          "body"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "output": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string"
+                          },
+                          "example": {
+                            "type": "object",
+                            "properties": {
+                              "summary": {
+                                "type": "string"
+                              },
+                              "key_facts": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "sources": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object"
+                                }
+                              },
+                              "confidence_score": {
+                                "type": "number"
+                              },
+                              "confidence_level": {
+                                "type": "string",
+                                "enum": [
+                                  "high",
+                                  "medium",
+                                  "low"
+                                ]
+                              },
+                              "freshness": {
+                                "type": "string",
+                                "enum": [
+                                  "real-time",
+                                  "recent",
+                                  "historical"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "summary",
+                              "key_facts",
+                              "sources",
+                              "confidence_score"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "type"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "input"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "resource": "https://agentoracle.co/deep-research",
+            "type": "http",
+            "x402Version": 2,
+            "description": "Load when an agent needs comprehensive multi-source analysis with deep reasoning, not a quick fact lookup. Powered by Sonar Pro. $0.10 USDC per query on Base.",
+            "mimeType": "application/json",
+            "accepts": [
+              {
+                "scheme": "exact",
+                "network": "eip155:8453",
+                "amount": "100000",
+                "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                "payTo": "0xdF90200B0031051BbF7a66BB9387d2Ecf599e109",
+                "maxTimeoutSeconds": 300,
+                "extra": {
+                  "name": "USD Coin",
+                  "version": "2"
+                }
+              }
+            ],
+            "lastUpdated": 1779596081,
+            "metadata": {
+              "category": "research",
+              "provider": "AgentOracle (TKCollective LLC)",
+              "tags": [
+                "research",
+                "deep",
+                "perplexity-pro",
+                "agents"
+              ],
+              "method": "POST",
+              "bodyType": "json"
+            },
+            "extensions": {
+              "bazaar": {
+                "bazaar": {
+                  "info": {
+                    "input": {
+                      "type": "http",
+                      "method": "POST",
+                      "bodyType": "json",
+                      "body": {
+                        "query": "Comprehensive analysis of DeFi yield strategies on Base network"
+                      }
+                    },
+                    "output": {
+                      "type": "json",
+                      "example": {
+                        "summary": "A comprehensive analysis of DeFi yield strategies on Base...",
+                        "key_facts": [
+                          "Top protocol: Aave with $12B TVL",
+                          "Average yield: 4.2% APY"
+                        ],
+                        "sources": [
+                          {
+                            "title": "DefiLlama",
+                            "url": "https://defillama.com"
+                          }
+                        ],
+                        "confidence_score": 0.91,
+                        "confidence_level": "high",
+                        "freshness": "real-time"
+                      }
+                    }
+                  },
+                  "schema": {
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "type": "object",
+                    "properties": {
+                      "input": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "http"
+                          },
+                          "method": {
+                            "type": "string",
+                            "enum": [
+                              "POST",
+                              "PUT",
+                              "PATCH"
+                            ]
+                          },
+                          "bodyType": {
+                            "type": "string",
+                            "enum": [
+                              "json",
+                              "form-data",
+                              "text"
+                            ]
+                          },
+                          "body": {
+                            "properties": {
+                              "query": {
+                                "type": "string",
+                                "maxLength": 4000,
+                                "description": "Research question for deep analysis"
+                              }
+                            },
+                            "required": [
+                              "query"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "method",
+                          "bodyType",
+                          "body"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "output": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string"
+                          },
+                          "example": {
+                            "type": "object",
+                            "properties": {
+                              "summary": {
+                                "type": "string"
+                              },
+                              "key_facts": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "sources": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object"
+                                }
+                              },
+                              "confidence_score": {
+                                "type": "number"
+                              },
+                              "confidence_level": {
+                                "type": "string"
+                              },
+                              "freshness": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "summary",
+                              "key_facts",
+                              "sources",
+                              "confidence_score"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "type"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "input"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "resource": "https://agentoracle.co/research/batch",
+            "type": "http",
+            "x402Version": 2,
+            "description": "Load when an agent needs up to 5 research queries answered in parallel in a single call, with the same citation+confidence output as /research. $0.10 USDC per batch on Base.",
+            "mimeType": "application/json",
+            "accepts": [
+              {
+                "scheme": "exact",
+                "network": "eip155:8453",
+                "amount": "100000",
+                "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                "payTo": "0xdF90200B0031051BbF7a66BB9387d2Ecf599e109",
+                "maxTimeoutSeconds": 300,
+                "extra": {
+                  "name": "USD Coin",
+                  "version": "2"
+                }
+              }
+            ],
+            "lastUpdated": 1779596081,
+            "metadata": {
+              "category": "research",
+              "provider": "AgentOracle (TKCollective LLC)",
+              "tags": [
+                "research",
+                "batch",
+                "agents"
+              ],
+              "method": "POST",
+              "bodyType": "json"
+            },
+            "extensions": {
+              "bazaar": {
+                "bazaar": {
+                  "info": {
+                    "input": {
+                      "type": "http",
+                      "method": "POST",
+                      "bodyType": "json",
+                      "body": {
+                        "query": "What is the current price of Bitcoin?"
+                      }
+                    },
+                    "output": {
+                      "type": "json",
+                      "example": {
+                        "summary": "Bitcoin is currently trading at $67,432 with a 24h volume of $28B...",
+                        "key_facts": [
+                          "BTC price: $67,432",
+                          "24h change: +2.3%",
+                          "Market cap: $1.33T"
+                        ],
+                        "sources": [
+                          {
+                            "title": "CoinGecko",
+                            "url": "https://coingecko.com"
+                          }
+                        ],
+                        "confidence_score": 0.94,
+                        "confidence_level": "high",
+                        "freshness": "real-time"
+                      }
+                    }
+                  },
+                  "schema": {
+                    "$schema": "https://json-schema.org/draft/2020-12/schema",
+                    "type": "object",
+                    "properties": {
+                      "input": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string",
+                            "const": "http"
+                          },
+                          "method": {
+                            "type": "string",
+                            "enum": [
+                              "POST",
+                              "PUT",
+                              "PATCH"
+                            ]
+                          },
+                          "bodyType": {
+                            "type": "string",
+                            "enum": [
+                              "json",
+                              "form-data",
+                              "text"
+                            ]
+                          },
+                          "body": {
+                            "properties": {
+                              "query": {
+                                "type": "string",
+                                "maxLength": 2000,
+                                "description": "Natural-language research question"
+                              },
+                              "tier": {
+                                "type": "string",
+                                "enum": [
+                                  "standard",
+                                  "deep"
+                                ],
+                                "description": "Pass deep to upgrade to Sonar Pro at $0.10"
+                              }
+                            },
+                            "required": [
+                              "query"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "method",
+                          "bodyType",
+                          "body"
+                        ],
+                        "additionalProperties": false
+                      },
+                      "output": {
+                        "type": "object",
+                        "properties": {
+                          "type": {
+                            "type": "string"
+                          },
+                          "example": {
+                            "type": "object",
+                            "properties": {
+                              "summary": {
+                                "type": "string"
+                              },
+                              "key_facts": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "sources": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object"
+                                }
+                              },
+                              "confidence_score": {
+                                "type": "number"
+                              },
+                              "confidence_level": {
+                                "type": "string",
+                                "enum": [
+                                  "high",
+                                  "medium",
+                                  "low"
+                                ]
+                              },
+                              "freshness": {
+                                "type": "string",
+                                "enum": [
+                                  "real-time",
+                                  "recent",
+                                  "historical"
+                                ]
+                              }
+                            },
+                            "required": [
+                              "summary",
+                              "key_facts",
+                              "sources",
+                              "confidence_score"
+                            ]
+                          }
+                        },
+                        "required": [
+                          "type"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "input"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        ],
+        "pagination": {
+          "limit": 3,
+          "offset": 0,
+          "total": 3
+        }
+      }
+    },
+    "challenge": {
+      "status": 402,
+      "body": {
+        "x402Version": 2,
+        "error": "Payment required",
+        "resource": {
+          "url": "https://agentoracle.co/research",
+          "description": "Load when an agent needs current external facts beyond training cutoff, citations with confidence scoring, or verifiable structured research. $0.02 USDC per query on Base.",
+          "mimeType": "application/json"
+        },
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:8453",
+            "amount": "20000",
+            "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "payTo": "0xdF90200B0031051BbF7a66BB9387d2Ecf599e109",
+            "maxTimeoutSeconds": 300,
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            }
+          }
+        ],
+        "extensions": {
+          "bazaar": {
+            "info": {
+              "input": {
+                "type": "http",
+                "method": "POST",
+                "bodyType": "json",
+                "body": {
+                  "query": "What is the current price of Bitcoin?"
+                }
+              },
+              "output": {
+                "type": "json",
+                "example": {
+                  "summary": "Bitcoin is currently trading at $67,432 with a 24h volume of $28B...",
+                  "key_facts": [
+                    "BTC price: $67,432",
+                    "24h change: +2.3%",
+                    "Market cap: $1.33T"
+                  ],
+                  "sources": [
+                    {
+                      "title": "CoinGecko",
+                      "url": "https://coingecko.com"
+                    }
+                  ],
+                  "confidence_score": 0.94,
+                  "confidence_level": "high",
+                  "freshness": "real-time"
+                }
+              }
+            },
+            "schema": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "object",
+              "properties": {
+                "input": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string",
+                      "const": "http"
+                    },
+                    "method": {
+                      "type": "string",
+                      "enum": [
+                        "POST"
+                      ]
+                    },
+                    "bodyType": {
+                      "type": "string",
+                      "enum": [
+                        "json",
+                        "form-data",
+                        "text"
+                      ]
+                    },
+                    "body": {
+                      "properties": {
+                        "query": {
+                          "type": "string",
+                          "maxLength": 2000,
+                          "description": "Natural-language research question"
+                        },
+                        "tier": {
+                          "type": "string",
+                          "enum": [
+                            "standard",
+                            "deep"
+                          ],
+                          "description": "Pass deep to upgrade to Sonar Pro at $0.10"
+                        }
+                      },
+                      "required": [
+                        "query"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "method",
+                    "bodyType",
+                    "body"
+                  ],
+                  "additionalProperties": false
+                },
+                "output": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "example": {
+                      "type": "object",
+                      "properties": {
+                        "summary": {
+                          "type": "string"
+                        },
+                        "key_facts": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "sources": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        },
+                        "confidence_score": {
+                          "type": "number"
+                        },
+                        "confidence_level": {
+                          "type": "string",
+                          "enum": [
+                            "high",
+                            "medium",
+                            "low"
+                          ]
+                        },
+                        "freshness": {
+                          "type": "string",
+                          "enum": [
+                            "real-time",
+                            "recent",
+                            "historical"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "summary",
+                        "key_facts",
+                        "sources",
+                        "confidence_score"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                }
+              },
+              "required": [
+                "input"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "discovery": {
+      "status": 200,
+      "body": {
+        "x402Version": 2,
+        "payTo": "0xdF90200B0031051BbF7a66BB9387d2Ecf599e109",
+        "pagination": {
+          "limit": 20,
+          "offset": 0,
+          "total": 1
+        },
+        "resources": [
+          {
+            "accepts": [
+              {
+                "amount": "20000",
+                "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+                "extra": {
+                  "name": "USD Coin",
+                  "version": "2"
+                },
+                "maxTimeoutSeconds": 300,
+                "network": "eip155:8453",
+                "payTo": "0xdF90200B0031051BbF7a66BB9387d2Ecf599e109",
+                "scheme": "exact"
+              }
+            ],
+            "description": "Load when an agent needs current external facts beyond training cutoff, citations with confidence scoring, or verifiable structured research. $0.02 USDC per query on Base.",
+            "extensions": {
+              "bazaar": {
+                "info": {
+                  "input": {
+                    "body": {
+                      "query": "What is the current price of Bitcoin?"
+                    },
+                    "bodyType": "json",
+                    "method": "POST",
+                    "type": "http"
+                  },
+                  "output": {
+                    "example": {
+                      "confidence_level": "high",
+                      "confidence_score": 0.94,
+                      "freshness": "real-time",
+                      "key_facts": [
+                        "BTC price: $67,432",
+                        "24h change: +2.3%",
+                        "Market cap: $1.33T"
+                      ],
+                      "sources": [
+                        {
+                          "title": "CoinGecko",
+                          "url": "https://coingecko.com"
+                        }
+                      ],
+                      "summary": "Bitcoin is currently trading at $67,432 with a 24h volume of $28B..."
+                    },
+                    "type": "json"
+                  }
+                },
+                "schema": {
+                  "$schema": "https://json-schema.org/draft/2020-12/schema",
+                  "properties": {
+                    "input": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "body": {
+                          "properties": {
+                            "query": {
+                              "description": "Natural-language research question",
+                              "maxLength": 2000,
+                              "type": "string"
+                            },
+                            "tier": {
+                              "description": "Pass deep to upgrade to Sonar Pro at $0.10",
+                              "enum": [
+                                "standard",
+                                "deep"
+                              ],
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "query"
+                          ]
+                        },
+                        "bodyType": {
+                          "enum": [
+                            "json",
+                            "form-data",
+                            "text"
+                          ],
+                          "type": "string"
+                        },
+                        "method": {
+                          "enum": [
+                            "POST"
+                          ],
+                          "type": "string"
+                        },
+                        "type": {
+                          "const": "http",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "method",
+                        "bodyType",
+                        "body"
+                      ],
+                      "type": "object"
+                    },
+                    "output": {
+                      "properties": {
+                        "example": {
+                          "properties": {
+                            "confidence_level": {
+                              "enum": [
+                                "high",
+                                "medium",
+                                "low"
+                              ],
+                              "type": "string"
+                            },
+                            "confidence_score": {
+                              "type": "number"
+                            },
+                            "freshness": {
+                              "enum": [
+                                "real-time",
+                                "recent",
+                                "historical"
+                              ],
+                              "type": "string"
+                            },
+                            "key_facts": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "sources": {
+                              "items": {
+                                "type": "object"
+                              },
+                              "type": "array"
+                            },
+                            "summary": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "summary",
+                            "key_facts",
+                            "sources",
+                            "confidence_score"
+                          ],
+                          "type": "object"
+                        },
+                        "type": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "input"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "lastUpdated": "2026-05-26T06:24:01.679Z",
+            "quality": {
+              "l30DaysTotalCalls": 2,
+              "l30DaysUniquePayers": 2,
+              "lastCalledAt": "2026-05-26T06:24:01.46Z"
+            },
+            "resource": "https://agentoracle.co/research",
+            "type": "http",
+            "x402Version": 2
+          }
+        ]
+      }
+    }
+  },
+  "expected": {
+    "verdict": "looks_correct",
+    "exitCode": 0,
+    "facets": {
+      "indexing.indexer_state": "indexed"
+    }
+  }
+}
