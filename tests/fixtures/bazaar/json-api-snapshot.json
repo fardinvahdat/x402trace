@@ -10,7 +10,15 @@
     {
       "check": "challenge",
       "status": "pass",
-      "message": "extensions.bazaar present (name=\"Snapshot API\", description set)"
+      "message": "extensions.bazaar present (name=\"Snapshot API\", description set)",
+      "detail": {
+        "challengeExtensions": {
+          "bazaar": {
+            "name": "Snapshot API",
+            "description": "Frozen exemplar for ADR-004 Pillar 2"
+          }
+        }
+      }
     },
     {
       "check": "self-payment",

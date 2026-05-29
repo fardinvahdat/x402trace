@@ -89,22 +89,49 @@ Operator remediation: configure CDN/Lambda to canonicalize to one host. CDP capt
 
 ```jsonc
 {
-  "kind": "looks_correct" | "implementation_issue" | "upstream_issue",
+  "kind": "looks_correct" | "implementation_issue" | "upstream_issue" | "upstream_stuck",
   "exitCode": 0 | 2 | 3,
   "message": "...",
   // Per-kind additional fields:
   "failedChecks": [...]      // ONLY on "implementation_issue"
-  "upstreamChecks": [...]    // ONLY on "upstream_issue"
+  "upstreamChecks": [...]    // ONLY on "upstream_issue" and "upstream_stuck"
+  "cause": "payload_echo_gap" | "indexer_state_processing" | "indexer_state_terminal" | "unknown"
+                             // ONLY on "upstream_stuck" (X402-50 K, ADR-007)
 }
 ```
+
+### `verdict.cause` (X402-50 K, ADR-007)
+
+Present only on the `upstream_stuck` variant. Refines the verdict with attribution to a specific root cause for the stuck-listing pattern. The exit-code surface is unchanged — `upstream_stuck` still rolls up to exit 3; `cause` is additive JSON-side, used by downstream consumers to bucket stuck listings without re-implementing the payload introspection.
+
+| Cause value | Meaning |
+|---|---|
+| `payload_echo_gap` | At least one of K's two rules fired. Rule 1 (`payment_payload_missing_resource_object`) detected a bare-URL-string `paymentPayload.resource` in buyer-side capture, OR Rule 2 (`extensions_not_echoed`) detected the canonical `EXTENSION-RESPONSES: e30=` signature on /settle alongside a non-empty challenge-side extensions block. Canonical writeup: x402-foundation/x402#2207. |
+| `indexer_state_processing` | The indexer state classification (`indexing.detail.indexer_state`) is `processing`, AND K rules' capture data was NOT fully supplied. This is the v0.3.2 baseline path — without buyer-side capture, the indexer state is the best signal we have. |
+| `indexer_state_terminal` | Reserved for a future refinement. v0.3.4 doesn't distinguish processing-fresh vs processing-stale (requires settle-timestamp data x402trace doesn't collect today). |
+| `unknown` | Default conservative fallback. Two scenarios: (a) K capture data WAS supplied for both rules AND both returned false — capture-checked sentinel ("not K, can't attribute further"); (b) catch-all for anything else. The `unknown` value covers @AsaiShota's contrast case (payload-correct, extensions echoed, still stuck — guards K's attribution precision from over-claiming). |
+
+### K-rule capture inputs (proxy / fixture-replay only)
+
+The K rules require buyer-side data that `bazaar-check` does NOT collect in standalone mode:
+
+- **Rule 1** needs the signed `paymentPayload`. In standalone mode, the rule defers (never fires false-positive).
+- **Rule 2** needs the /settle response headers. In standalone mode, the rule defers.
+
+Capture sources:
+
+- **Proxy mode** (future) — when bazaar-check is integrated with the local proxy substrate, captures pipe through automatically.
+- **Fixture replay** — `tests/fixtures/bazaar/captured-responses/*.json` accepts optional `mocks.paymentPayload` + `mocks.settle` blocks that simulate the buyer-side data.
+
+When both rules defer (no capture supplied), `verdict.cause` falls back to `indexer_state_processing` (when applicable) or `unknown`. Operators in standalone mode see the indexer-state-derived attribution; operators with proxy capture see the full K diagnosis.
 
 ### Exit-code contract (preserved unchanged across all minor versions)
 
 - `0` ↔ `looks_correct`
 - `2` ↔ `implementation_issue`
-- `3` ↔ `upstream_issue`
+- `3` ↔ `upstream_issue` OR `upstream_stuck` (both fold to exit 3)
 
-D.3's `upstream_stuck` composite (from ADR-004 Pillar 1, landing in X402-46) rolls up to exit code 3 — the verdict prose names the distinction; the exit-code surface stays a 3-value contract. Consumers grepping exit codes don't break.
+D.3's `upstream_stuck` composite (from ADR-004 Pillar 1, landing in X402-46) rolls up to exit code 3 — the verdict prose names the distinction; the exit-code surface stays a 3-value contract. K's `cause` discriminator (ADR-007 / X402-50) is additive JSON-side; the exit-code surface still stays a 3-value contract. Consumers grepping exit codes don't break.
 
 ## Stability rules
 

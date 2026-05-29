@@ -1,0 +1,159 @@
+{
+  "$comment": "X402-50 (K, ADR-007) false-positive guard. AsaiShota-style contrast voice: paymentPayload.resource is a well-formed {url, description?, mimeType?} object AND /settle response properly echoes extensions (no e30= signature) \u2014 both K rules return false. Indexer still returns 0 resources for the payTo (test-echo-cdp listed but not indexed since 2026-05-11 per AsaiShota's #2207 contribution). Verdict stays upstream_stuck (indexer_state: processing) but cause MUST be `unknown`, NOT `payload_echo_gap`. This is the canonical sentinel that protects K's attribution precision: payload-correct stuck listings exist, and the rule pair must NOT mis-route them. Per ADR-007: '@AsaiShota's test-echo-cdp must assert upstream_stuck_cause: unknown (NOT payload_echo_gap) \u2014 guards the contrast voice into the test bed as a false-positive sentinel.'",
+  "scenario": "test-echo-cdp-stuck-cause-unknown",
+  "input": {
+    "serviceUrl": "https://x402-market-api.lien-studio-akiyama.workers.dev/api/seller-4068b8fc/test-echo-cdp",
+    "chain": "base"
+  },
+  "mocks": {
+    "well-known": {
+      "status": 200,
+      "body": {
+        "x402Version": 2,
+        "name": "test-echo-cdp",
+        "description": "echo endpoint over CDP facilitator (AsaiShota's body-discovery test surface)",
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:8453",
+            "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "amount": "10000",
+            "payTo": "0x4068b8Fc01647eCFFb5873a91578721b4FE7a9eE"
+          }
+        ],
+        "extensions": {
+          "bazaar": {
+            "info": {
+              "input": {
+                "type": "http",
+                "method": "POST",
+                "bodyType": "json",
+                "body": {
+                  "q": "echo this"
+                }
+              },
+              "output": {
+                "type": "json",
+                "example": {
+                  "echo": "echo this"
+                }
+              }
+            },
+            "schema": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    "challenge": {
+      "status": 402,
+      "body": {
+        "x402Version": 2,
+        "error": "Payment required",
+        "resource": {
+          "url": "https://x402-market-api.lien-studio-akiyama.workers.dev/api/seller-4068b8fc/test-echo-cdp",
+          "description": "echo"
+        },
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:8453",
+            "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "amount": "10000",
+            "payTo": "0x4068b8Fc01647eCFFb5873a91578721b4FE7a9eE",
+            "maxTimeoutSeconds": 300,
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            }
+          }
+        ],
+        "extensions": {
+          "bazaar": {
+            "info": {
+              "input": {
+                "type": "http",
+                "method": "POST",
+                "bodyType": "json",
+                "body": {
+                  "q": "echo this"
+                }
+              },
+              "output": {
+                "type": "json",
+                "example": {
+                  "echo": "echo this"
+                }
+              }
+            },
+            "schema": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    "discovery": {
+      "status": 200,
+      "body": {
+        "resources": []
+      }
+    },
+    "paymentPayload": {
+      "paymentPayload": {
+        "scheme": "exact",
+        "network": "eip155:8453",
+        "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+        "amount": "10000",
+        "payTo": "0x4068b8Fc01647eCFFb5873a91578721b4FE7a9eE",
+        "resource": {
+          "url": "https://x402-market-api.lien-studio-akiyama.workers.dev/api/seller-4068b8fc/test-echo-cdp",
+          "description": "echo",
+          "mimeType": "application/json"
+        },
+        "extensions": {
+          "bazaar": {
+            "info": {
+              "input": {
+                "type": "http",
+                "method": "POST",
+                "bodyType": "json",
+                "body": {
+                  "q": "echo this"
+                }
+              },
+              "output": {
+                "type": "json",
+                "example": {
+                  "echo": "echo this"
+                }
+              }
+            },
+            "schema": {
+              "$schema": "https://json-schema.org/draft/2020-12/schema",
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    "settle": {
+      "status": 200,
+      "headers": {
+        "extension-responses": "eyJiYXphYXIiOnsic3RhdHVzIjoicHJvY2Vzc2luZyJ9fQ==",
+        "content-type": "application/json"
+      }
+    }
+  },
+  "expected": {
+    "verdict": "upstream_stuck",
+    "exitCode": 3,
+    "facets": {
+      "indexing.indexer_state": "processing"
+    },
+    "verdictCause": "unknown"
+  }
+}
