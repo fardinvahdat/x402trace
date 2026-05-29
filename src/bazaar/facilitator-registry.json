@@ -1,0 +1,38 @@
+{
+  "$comment": "X402-51 (v0.3.4 G, ADR-005) — built-in facilitator registry for the facilitator-fitness check. Maps known facilitator identity claims to probe endpoints. Each entry is matched against the merchant manifest's declared `extensions.bazaar.facilitator` field (case-insensitive). Unknown facilitators emit `facilitator_fitness: unknown` rather than attempting structural probing. The registry is data, not code — operators can override via `--facilitator-registry <path>` (deferred to v0.4+). New facilitators land as PRs adding entries here; ADR-005 § Risks #1 documents the maintenance pattern.",
+  "version": 1,
+  "facilitators": [
+    {
+      "id": "cdp",
+      "display_name": "Coinbase Developer Platform (CDP)",
+      "names": ["coinbase-cdp", "cdp", "coinbase"],
+      "declared_urls": [
+        "https://api.cdp.coinbase.com",
+        "https://api.cdp.coinbase.com/platform/v2/x402"
+      ],
+      "probe_endpoint": "https://api.cdp.coinbase.com/platform/v2/x402/verify",
+      "description": "Coinbase Developer Platform — canonical facilitator for Base mainnet + Sepolia; default for most v0.3.x operators (AgentOracle, hyperD, TensorFeed, AsaiShota's test-echo-cdp, anchor-x402's Base + Solana rails)"
+    },
+    {
+      "id": "payai",
+      "display_name": "PayAI facilitator",
+      "names": ["payai", "payai-facilitator"],
+      "declared_urls": [
+        "https://facilitator.payai.network",
+        "https://facilitator.payai.network/x402"
+      ],
+      "probe_endpoint": "https://facilitator.payai.network/verify",
+      "description": "PayAI facilitator — Base mainnet alternative + SKALE gasless settlement; named voice from Cinderwright #1065 + TKCollective's /deep-research/skale fixture (gasless on SKALE chainId 1187947933)"
+    },
+    {
+      "id": "x402-org",
+      "display_name": "x402.org reference facilitator",
+      "names": ["x402.org", "x402.org-facilitator", "x402-org"],
+      "declared_urls": [
+        "https://x402.org/facilitator"
+      ],
+      "probe_endpoint": "https://x402.org/facilitator/verify",
+      "description": "x402.org reference facilitator — testnet-only; used by the v0.1 dogfood substrate (X402-3) + ADR-001 default facilitator profile"
+    }
+  ]
+}

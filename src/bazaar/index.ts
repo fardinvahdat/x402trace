@@ -22,6 +22,7 @@
  */
 
 import { checkChallenge, fetchChallenge, checkSelfPayment } from "./challenge.js";
+import { checkFacilitatorFitness } from "./facilitator-fitness.js";
 import { checkHostPollution } from "./host-pollution.js";
 import { checkIndexing } from "./indexing.js";
 import { checkPropagation } from "./propagation.js";
@@ -72,6 +73,16 @@ export {
   evaluateExtensionsNotEchoed,
   type PaymentPayloadEchoGapResult,
 } from "./payment-payload-rules.js";
+export {
+  checkFacilitatorFitness,
+  loadFacilitatorRegistry,
+  resolveFacilitator,
+  probeFacilitatorWithRetry,
+  DEFAULT_PROBE_TIMEOUT_MS,
+  PROBE_RETRY_DELAYS_MS,
+  type FacilitatorFitnessFetcher,
+  type FacilitatorFitnessOptions,
+} from "./facilitator-fitness.js";
 export { synthesiseVerdict } from "./verdict.js";
 
 export interface BazaarCheckOptions {
@@ -238,6 +249,20 @@ export async function runBazaarCheck(opts: BazaarCheckOptions): Promise<BazaarRe
       message: "challenge fetch failed; host-pollution check skipped (no payTo to query against)",
     });
   }
+
+  // 7. Facilitator fitness (X402-51 / G) — probe declared facilitator
+  //    per-rail; emit array of per-rail fitness states (ok/degraded/
+  //    unreachable/unknown). Per ADR-005, identity source is the
+  //    manifest's declared extensions.bazaar.facilitator field (NOT
+  //    tx-from inference, load-bearing for gasless rails).
+  //    Status `info` if any rail is unreachable (rolls up to
+  //    upstream_issue verdict, exit 3); `pass` otherwise — degraded
+  //    rails surface in facet but don't flip verdict.
+  results.push(
+    await checkFacilitatorFitness(manifest, {
+      fetcher,
+    }),
+  );
 
   return {
     serviceUrl: opts.serviceUrl,

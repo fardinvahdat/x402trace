@@ -42,7 +42,7 @@ import type {
 import { evaluatePaymentPayloadEchoGap } from "./payment-payload-rules.js";
 
 const IMPLEMENTATION_CHECKS = new Set(["well-known", "challenge", "self-payment"]);
-const UPSTREAM_CHECKS = new Set(["indexing", "propagation"]);
+const UPSTREAM_CHECKS = new Set(["indexing", "propagation", "facilitator-fitness"]);
 
 /**
  * Detect whether the indexing check fired `indexer_state: processing`,

@@ -27,6 +27,7 @@ Entries appear in this fixed order. New checks are appended (never reordered):
 4. `"indexing"` — CDP discovery query (`/v2/x402/discovery/resources?payTo=...`)
 5. `"propagation"` — metadata propagation diff (X402-45 / D.2, ADR-004)
 6. `"host-pollution"` — CDP merchant discovery multi-host listing-hygiene warning (X402-53 / L, ADR-008)
+7. `"facilitator-fitness"` — declared facilitator `/verify` probe with per-rail facet array (X402-51 / G, ADR-005)
 
 Each entry is a `CheckResult`:
 
@@ -58,6 +59,7 @@ These fields are present when the check fires the corresponding code path. Consu
 | `indexing`       | `queryUrl`, `status` (one of `"indexed" \| "processing" \| "not_found" \| "error"`), `count` (when indexed), `httpStatus` (when HTTP error), `indexer_state` (`"indexed" \| "processing" \| "unknown" \| "not_applicable_non_cdp"`) |
 | `propagation`    | `queryUrl`, `metadata_propagation` (`"ok" \| "partial" \| "missing" \| "unknown" \| "not_applicable_non_cdp"`), `diff[]` (when partial/missing), `httpStatus` (when HTTP error)                                                                |
 | `host-pollution` | `queryUrl`, `state` (`"no_pollution" \| "polluted" \| "unknown" \| "not_applicable_non_cdp"`), `polluted_paths[]` (when polluted), `polluted_path_count` (when polluted), `total_entries`, `distinct_hosts`, `httpStatus` (when HTTP error)            |
+| `facilitator-fitness` | `facilitator_fitness.rails[]` (per-rail array: `{rail, network, facilitator, identity_source, fitness, diagnostic?}`), `facilitator_fitness.summary` (`{ok, degraded, unreachable, unknown}` counts) |
 
 The `challenge.detail.variant` field carries the detected discovery-extension variant (`"mcp-discovery"` \| `"body-discovery"` \| `"unknown"`) on failed validations. See ADR-004 Pillar 3 for the variant model.
 
@@ -84,6 +86,35 @@ When `state === "polluted"`, the facet carries:
 ```
 
 Operator remediation: configure CDN/Lambda to canonicalize to one host. CDP captures the URL the buyer hit (not the canonical resource URL), so when multiple hostnames front the same handler, the merchant index shows duplicate entries per path. See [ADR-008](../../DECISIONS.md#adr-008) for the design rationale.
+
+### `facilitator-fitness` facet shape (X402-51 / G, ADR-005)
+
+The `facilitator-fitness` check probes the merchant's declared `extensions.bazaar.facilitator` against the built-in registry (CDP, PayAI, x402.org/facilitator) and emits a per-rail array. Status `info` only when at least one rail is `unreachable` (rolls up to `upstream_issue` exit 3); `pass` otherwise — `degraded` rails surface in the facet but don't flip the verdict.
+
+```jsonc
+{
+  "facilitator_fitness": {
+    "rails": [
+      {
+        "rail": 0,
+        "network": "eip155:8453",          // CAIP-2 chain identifier from accepts[i].network
+        "facilitator": "cdp",               // declared value (or null)
+        "identity_source": "declared",      // "declared" | "inferred-from-tx" | "unknown"
+        "fitness": "ok",                    // "ok" | "degraded" | "unreachable" | "unknown"
+        "diagnostic": "2xx on first attempt (45ms)"
+      }
+      // ... one entry per accepts[] rail
+    ],
+    "summary": { "ok": 3, "degraded": 0, "unreachable": 0, "unknown": 0 }
+  }
+}
+```
+
+Per-rail array is canonical — healthy CDP rails are NOT masked by degraded/unreachable rails. Downstream consumers (TomSmart_ai's mapper, Cinderwright's leaderboard) bucket on `summary.unreachable > 0`.
+
+**Identity source attribution** (`identity_source` field): `declared` means the facilitator was read from `manifest.extensions.bazaar.facilitator`; `inferred-from-tx` is reserved for v0.4+ tx-`from` fallback (not used in v0.3.4); `unknown` means no declaration available (manifest absent or facilitator field absent).
+
+**v0.3.4 MVP**: manifest-level declaration applies uniformly to all rails; per-`accepts[i].facilitator` override deferred to v0.4+ if an operator surfaces the need. See [ADR-005](../../DECISIONS.md#adr-005) for the design rationale.
 
 ## `verdict` — the discriminated union
 

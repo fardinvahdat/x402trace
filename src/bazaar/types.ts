@@ -230,6 +230,81 @@ export type UpstreamStuckCause =
   | "unknown";
 
 /**
+ * X402-51 (G, ADR-005) — per-rail facilitator-fitness classification.
+ *
+ *   - `ok` — facilitator's `/verify` probe returned 200 within timeout
+ *     with a scheme-expected response shape.
+ *   - `degraded` — facilitator probe returned 200 but with elevated
+ *     latency (≥3× declared `maxTimeoutSeconds` proportional) OR
+ *     returned 5xx that recovered within bounded retry (≤3 attempts,
+ *     exponential backoff per the @mkmkkkkk pattern from #1065).
+ *   - `unreachable` — facilitator probe failed consistently across
+ *     bounded retries (TCP refused / TLS error / persistent 5xx).
+ *   - `unknown` — facilitator not in built-in registry AND no
+ *     declared probe endpoint to attempt (no remediation hint).
+ */
+export type FacilitatorFitnessState = "ok" | "degraded" | "unreachable" | "unknown";
+
+/**
+ * X402-51 (G, ADR-005) — identity source attribution. Documents *how*
+ * x402trace identified the facilitator for this rail, surfaced in the
+ * facet for transparency.
+ *
+ *   - `declared` — read directly from `extensions.bazaar.facilitator`
+ *     on the merchant's manifest (canonical source per ADR-005).
+ *   - `inferred-from-tx` — fallback for non-gasless rails when the
+ *     manifest declares no facilitator. NOT used in v0.3.4 MVP;
+ *     reserved as a type slot for v0.4+ tx-`from` inference.
+ *   - `unknown` — no identity available (manifest absent / facilitator
+ *     field absent / inference disabled).
+ */
+export type FacilitatorFitnessIdentitySource = "declared" | "inferred-from-tx" | "unknown";
+
+/**
+ * X402-51 (G, ADR-005) — per-rail facet entry.
+ *
+ * A merchant declaring multiple `accepts[]` entries (each a rail —
+ * scheme + network + asset combination) emits one of these per rail.
+ * Healthy rails are NOT masked by degraded rails — each rail's
+ * fitness stands on its own.
+ */
+export interface FacilitatorFitnessRailEntry {
+  /** 0-indexed position in `accepts[]`. */
+  readonly rail: number;
+  /** Network of this rail (e.g. `"eip155:8453"`, `"eip155:137"`, `"solana:..."`). */
+  readonly network: string;
+  /** Declared facilitator URL or identifier; null if no declaration available. */
+  readonly facilitator: string | null;
+  /** Where the facilitator identity came from. */
+  readonly identity_source: FacilitatorFitnessIdentitySource;
+  /** Probe outcome for this rail. */
+  readonly fitness: FacilitatorFitnessState;
+  /** Optional one-line diagnostic (e.g. "5xx on first attempt, recovered after 500ms"). */
+  readonly diagnostic?: string;
+}
+
+/**
+ * X402-51 (G, ADR-005) — facet on the `facilitator-fitness` check's
+ * CheckResult.detail. Per-rail array (never collapsed). Surfaced
+ * under `extensions.bazaar.facilitator_fitness` in the JSON API.
+ *
+ * Cross-facet precedence (per `src/bazaar/diagnose-rules.md`):
+ * `service_unreachable` (I, future) > `upstream_stuck` (K's cause
+ * lives here) > `upstream_issue` (any rail unreachable rolls up here)
+ * > `facilitator_fitness` facet > `host_pollution` (L) > `looks_correct`.
+ */
+export interface FacilitatorFitnessFacet {
+  readonly rails: readonly FacilitatorFitnessRailEntry[];
+  /** Count of rails by fitness state, for fast top-level summary. */
+  readonly summary: {
+    readonly ok: number;
+    readonly degraded: number;
+    readonly unreachable: number;
+    readonly unknown: number;
+  };
+}
+
+/**
  * X402-50 (K, ADR-007) — buyer-side capture data needed for Rule 1
  * (`payment_payload_missing_resource_object`). When supplied (proxy
  * mode or fixture replay), Rule 1 evaluates the `resource` field

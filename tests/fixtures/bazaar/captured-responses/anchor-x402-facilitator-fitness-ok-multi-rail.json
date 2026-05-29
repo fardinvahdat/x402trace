@@ -1,0 +1,114 @@
+{
+  "$comment": "X402-51 (G, ADR-005) \u2014 multi-rail facilitator-fitness acceptance fixture. Adapted from Ferj/@hypeprinter007-stack's anchor-x402.com 3-rail challenge body (Base USDC CDP + Solana USDC CDP + JPY Coin Polygon, originally captured for X402-53 L). Tests G's per-rail facet emission when extensions.bazaar.facilitator declares CDP; facilitator probe returns 200 \u2192 fitness: ok across all 3 rails. Per ADR-005, identity source: declared (not tx-from inference, load-bearing for gasless rails). Multi-rail synthesis: per-rail array (not collapsed); summary aggregates {ok, degraded, unreachable, unknown}. Cross-validates the declared-facilitator-applies-to-all-rails design in v0.3.4 MVP (per-accepts[i].facilitator override deferred to v0.4+).",
+  "scenario": "anchor-x402-facilitator-fitness-ok-multi-rail",
+  "input": {
+    "serviceUrl": "https://api.anchor-x402.com/v1/anchor",
+    "chain": "base"
+  },
+  "mocks": {
+    "well-known": {
+      "status": 200,
+      "body": {
+        "name": "Anchor",
+        "description": "Anchor a 32-byte hash to Base + Solana mainnet \u2014 $0.005 USDC",
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:8453",
+            "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "amount": "5000",
+            "payTo": "0x127462e296fAc1A7F5cF33bA57bB2f0FFf5cD0B6"
+          },
+          {
+            "scheme": "exact",
+            "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+            "asset": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+            "amount": "5000",
+            "payTo": "6apuZvJQ51Led9iEjnHw6f5jfnXL4qjt8S1h58PeXzuR"
+          },
+          {
+            "scheme": "exact",
+            "network": "eip155:137",
+            "asset": "0x431D5dfF03120AFA4bDf332c61A6e1766eF37BDB",
+            "amount": "1000000000000000000",
+            "payTo": "0x127462e296fAc1A7F5cF33bA57bB2f0FFf5cD0B6"
+          }
+        ],
+        "extensions": {
+          "bazaar": {
+            "name": "Anchor",
+            "description": "Anchor a 32-byte hash to Base + Solana mainnet \u2014 $0.005 USDC",
+            "facilitator": "cdp"
+          }
+        }
+      }
+    },
+    "challenge": {
+      "status": 402,
+      "body": {
+        "x402Version": 2,
+        "error": "Payment required",
+        "resource": {
+          "url": "https://api.anchor-x402.com/v1/anchor",
+          "description": "Anchor",
+          "serviceName": "Anchor"
+        },
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:8453",
+            "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "amount": "5000",
+            "payTo": "0x127462e296fAc1A7F5cF33bA57bB2f0FFf5cD0B6",
+            "maxTimeoutSeconds": 300,
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            }
+          }
+        ],
+        "extensions": {
+          "bazaar": {
+            "name": "Anchor",
+            "description": "Anchor a 32-byte hash to Base + Solana mainnet \u2014 $0.005 USDC",
+            "facilitator": "cdp"
+          }
+        }
+      }
+    },
+    "discovery": {
+      "status": 200,
+      "body": {
+        "resources": [
+          {
+            "resource": "https://api.anchor-x402.com/v1/anchor",
+            "name": "Anchor",
+            "description": "Anchor a 32-byte hash to Base + Solana mainnet \u2014 $0.005 USDC"
+          }
+        ]
+      }
+    },
+    "facilitator-verify": {
+      "status": 200,
+      "body": {}
+    }
+  },
+  "expected": {
+    "verdict": "looks_correct",
+    "exitCode": 0,
+    "facets": {
+      "facilitator-fitness.facilitator_fitness.summary.ok": 3,
+      "facilitator-fitness.facilitator_fitness.summary.degraded": 0,
+      "facilitator-fitness.facilitator_fitness.summary.unreachable": 0,
+      "facilitator-fitness.facilitator_fitness.summary.unknown": 0,
+      "facilitator-fitness.facilitator_fitness.rails.0.network": "eip155:8453",
+      "facilitator-fitness.facilitator_fitness.rails.0.facilitator": "cdp",
+      "facilitator-fitness.facilitator_fitness.rails.0.identity_source": "declared",
+      "facilitator-fitness.facilitator_fitness.rails.0.fitness": "ok",
+      "facilitator-fitness.facilitator_fitness.rails.1.network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+      "facilitator-fitness.facilitator_fitness.rails.1.fitness": "ok",
+      "facilitator-fitness.facilitator_fitness.rails.2.network": "eip155:137",
+      "facilitator-fitness.facilitator_fitness.rails.2.fitness": "ok"
+    }
+  }
+}
