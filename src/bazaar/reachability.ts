@@ -224,10 +224,15 @@ async function probeReachability(
         diagnostic: `unclassified error: ${first.error instanceof Error ? first.error.message : String(first.error)}`,
       };
     }
+    // Note: latency stays in latencyMs (and the bazaar.probe_attempt
+    // JSONL event's latency_ms field). Excluded from the diagnostic
+    // string so the JSON API snapshot stays deterministic across
+    // CI runners with different wall-clock speeds. (Bug class found
+    // by Node 20 vs Node 22 snapshot drift on `(0ms)` vs `(1ms)`.)
     return {
       cause,
       latencyMs: first.latencyMs,
-      diagnostic: `${cause} on first probe attempt (${first.latencyMs}ms)`,
+      diagnostic: `${cause} on first probe attempt`,
     };
   }
   // We got a Response. Status-based classification.
@@ -236,7 +241,7 @@ async function probeReachability(
     return {
       cause: null,
       latencyMs: first.latencyMs,
-      diagnostic: `HTTP ${status} on first probe (${first.latencyMs}ms) — service responsive`,
+      diagnostic: `HTTP ${status} on first probe — service responsive`,
     };
   }
   // 5xx — enter the bounded retry loop for `persistent_5xx`.
