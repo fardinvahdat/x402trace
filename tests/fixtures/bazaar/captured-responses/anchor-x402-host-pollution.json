@@ -1,0 +1,179 @@
+{
+  "$comment": "X402-53 (L) \u2014 host_pollution canonical fixture. Captured from Ferj/@hypeprinter007-stack's anchor-x402.com setup on 2026-05-29 via https://github.com/hypeprinter007-stack/anchor-x402/tree/main/fixtures/x402trace-L. Merchant discovery shows 25 entries for one payTo across 3 hosts (api.anchor-x402.com: 13, chat.anchor-x402.com: 3, 1c09pdnrx1.execute-api.us-east-1.amazonaws.com: 9), with 9 resource paths each indexed on 2+ hosts. Code is correct (verdict looks_correct, exit 0); ops are leaky (host_pollution facet fires as warning). Validates the ADR-008 design: host_pollution is additive under existing looks_correct verdict, not a top-level verdict change. Same fixture's challenge body also exercises the G/X402-51 multi-rail acceptance target (Base USDC + Solana USDC + JPY Coin Polygon) but G's per-rail facet emission is X402-51 scope; here we only assert L's behaviour.",
+  "scenario": "anchor-x402-host-pollution",
+  "input": {
+    "serviceUrl": "https://api.anchor-x402.com/v1/anchor",
+    "chain": "base"
+  },
+  "mocks": {
+    "well-known": {
+      "status": 200,
+      "body": {
+        "name": "Anchor",
+        "description": "Anchor a 32-byte hash to Base + Solana mainnet \u2014 $0.005 USDC",
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:8453",
+            "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "amount": "5000",
+            "payTo": "0x127462e296fAc1A7F5cF33bA57bB2f0FFf5cD0B6",
+            "extra": {
+              "name": "USD Coin",
+              "version": "2"
+            }
+          }
+        ],
+        "extensions": {
+          "bazaar": {
+            "name": "Anchor",
+            "description": "Anchor a 32-byte hash to Base + Solana mainnet — $0.005 USDC"
+          }
+        }
+      }
+    },
+    "challenge": {
+      "status": 402,
+      "body": {
+        "x402Version": 2,
+        "error": "Payment required",
+        "resource": {
+          "url": "https://api.anchor-x402.com/v1/anchor",
+          "description": "Anchor a 32-byte hash to Base + Solana mainnet \u2014 $0.005 USDC",
+          "serviceName": "Anchor"
+        },
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:8453",
+            "asset": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+            "amount": "5000",
+            "payTo": "0x127462e296fAc1A7F5cF33bA57bB2f0FFf5cD0B6",
+            "maxTimeoutSeconds": 300,
+            "extra": {
+              "name": "USD Coin",
+              "version": "2",
+              "resource": "https://api.anchor-x402.com/v1/anchor"
+            }
+          }
+        ],
+        "extensions": {
+          "bazaar": {
+            "name": "Anchor",
+            "description": "Anchor a 32-byte hash to Base + Solana mainnet \u2014 $0.005 USDC"
+          }
+        }
+      }
+    },
+    "discovery": {
+      "status": 200,
+      "body": {
+        "resources": [
+          {
+            "resource": "https://api.anchor-x402.com/v1/anchor",
+            "name": "Anchor",
+            "description": "Anchor a 32-byte hash to Base + Solana mainnet — $0.005 USDC"
+          }
+        ]
+      }
+    },
+    "discovery-merchant": {
+      "status": 200,
+      "body": {
+        "pagination": {
+          "limit": 50,
+          "offset": 0,
+          "total": 25
+        },
+        "payTo": "0x127462e296fAc1A7F5cF33bA57bB2f0FFf5cD0B6",
+        "resources": [
+          {
+            "resource": "https://api.anchor-x402.com/v1/anchor"
+          },
+          {
+            "resource": "https://api.anchor-x402.com/v1/intel/wallet"
+          },
+          {
+            "resource": "https://api.anchor-x402.com/v1/screen"
+          },
+          {
+            "resource": "https://api.anchor-x402.com/v1/investigate"
+          },
+          {
+            "resource": "https://api.anchor-x402.com/v1/tldr"
+          },
+          {
+            "resource": "https://api.anchor-x402.com/v1/roll"
+          },
+          {
+            "resource": "https://api.anchor-x402.com/v1/resolve/name"
+          },
+          {
+            "resource": "https://chat.anchor-x402.com/v1/aura"
+          },
+          {
+            "resource": "https://1c09pdnrx1.execute-api.us-east-1.amazonaws.com/v1/screen"
+          },
+          {
+            "resource": "https://api.anchor-x402.com/v1/oracle"
+          },
+          {
+            "resource": "https://chat.anchor-x402.com/v1/roast"
+          },
+          {
+            "resource": "https://chat.anchor-x402.com/v1/grade"
+          },
+          {
+            "resource": "https://api.anchor-x402.com/v1/parse/datetime"
+          },
+          {
+            "resource": "https://api.anchor-x402.com/v1/decode/calldata"
+          },
+          {
+            "resource": "https://api.anchor-x402.com/v1/price/token"
+          },
+          {
+            "resource": "https://api.anchor-x402.com/v1/decode/tx"
+          },
+          {
+            "resource": "https://api.anchor-x402.com/v1/attest"
+          },
+          {
+            "resource": "https://1c09pdnrx1.execute-api.us-east-1.amazonaws.com/v1/intel/wallet"
+          },
+          {
+            "resource": "https://1c09pdnrx1.execute-api.us-east-1.amazonaws.com/v1/parse/datetime"
+          },
+          {
+            "resource": "https://1c09pdnrx1.execute-api.us-east-1.amazonaws.com/v1/decode/calldata"
+          },
+          {
+            "resource": "https://1c09pdnrx1.execute-api.us-east-1.amazonaws.com/v1/price/token"
+          },
+          {
+            "resource": "https://1c09pdnrx1.execute-api.us-east-1.amazonaws.com/v1/resolve/name"
+          },
+          {
+            "resource": "https://1c09pdnrx1.execute-api.us-east-1.amazonaws.com/v1/decode/tx"
+          },
+          {
+            "resource": "https://1c09pdnrx1.execute-api.us-east-1.amazonaws.com/v1/attest"
+          },
+          {
+            "resource": "https://1c09pdnrx1.execute-api.us-east-1.amazonaws.com/v1/anchor"
+          }
+        ]
+      }
+    }
+  },
+  "expected": {
+    "verdict": "looks_correct",
+    "exitCode": 0,
+    "facets": {
+      "host-pollution.state": "polluted",
+      "host-pollution.polluted_path_count": 9,
+      "host-pollution.distinct_hosts": 3,
+      "host-pollution.total_entries": 25
+    }
+  }
+}

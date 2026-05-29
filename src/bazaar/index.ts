@@ -22,6 +22,7 @@
  */
 
 import { checkChallenge, fetchChallenge, checkSelfPayment } from "./challenge.js";
+import { checkHostPollution } from "./host-pollution.js";
 import { checkIndexing } from "./indexing.js";
 import { checkPropagation } from "./propagation.js";
 import type { BazaarReport, CheckResult, WellKnownManifest } from "./types.js";
@@ -50,6 +51,15 @@ export {
   type PropagationCheckOptions,
   type PropagationFetcher,
 } from "./propagation.js";
+export {
+  checkHostPollution,
+  findHostPollution,
+  parseResourceUrl,
+  CDP_MERCHANT_DISCOVERY_BASE,
+  DEFAULT_MERCHANT_DISCOVERY_LIMIT,
+  type HostPollutionCheckOptions,
+  type HostPollutionFetcher,
+} from "./host-pollution.js";
 export { synthesiseVerdict } from "./verdict.js";
 
 export interface BazaarCheckOptions {
@@ -149,6 +159,30 @@ export async function runBazaarCheck(opts: BazaarCheckOptions): Promise<BazaarRe
       ...(opts.discoveryBaseUrl !== undefined ? { discoveryBaseUrl: opts.discoveryBaseUrl } : {}),
     }),
   );
+
+  // 6. Host pollution (X402-53 / L) — CDP merchant discovery returns
+  //    N entries spread across M distinct hostnames for the same
+  //    payTo when multi-host CDN/Lambda setups front the same handler.
+  //    Listing-hygiene warning: code is correct, ops are leaky.
+  //    Status `info` here is informational only — the verdict
+  //    synthesizer does NOT include `host-pollution` in its
+  //    upstream-checks set, so this never flips the exit code.
+  //    Per ADR-008. Same non-CDP short-circuit pattern as indexing.
+  if (challengeFetch.ok) {
+    results.push(
+      await checkHostPollution(challengeFetch.requirements.payTo, {
+        fetcher,
+        ...(opts.discoveryBaseUrl !== undefined ? { discoveryBaseUrl: opts.discoveryBaseUrl } : {}),
+        ...(manifest !== undefined ? { manifest } : {}),
+      }),
+    );
+  } else {
+    results.push({
+      check: "host-pollution",
+      status: "pass",
+      message: "challenge fetch failed; host-pollution check skipped (no payTo to query against)",
+    });
+  }
 
   return {
     serviceUrl: opts.serviceUrl,

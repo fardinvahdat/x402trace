@@ -36,6 +36,17 @@
         "metadata_propagation": "ok",
         "queryUrl": "https://test-discovery.example.test/v2/x402/discovery/resources?payTo=0x1111111111111111111111111111111111111111"
       }
+    },
+    {
+      "check": "host-pollution",
+      "status": "pass",
+      "message": "merchant discovery has 1 entries across 1 host(s); no path indexed on more than one host",
+      "detail": {
+        "queryUrl": "https://test-discovery.example.test/platform/v2/x402/discovery/merchant?payTo=0x1111111111111111111111111111111111111111&limit=50",
+        "state": "no_pollution",
+        "total_entries": 1,
+        "distinct_hosts": 1
+      }
     }
   ],
   "verdict": {

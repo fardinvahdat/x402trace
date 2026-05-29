@@ -17,14 +17,16 @@ A single JSON object per `bazaar-check` invocation, written to stdout when `--lo
 }
 ```
 
-## `results[]` — the four checks
+## `results[]` — the canonical checks
 
-Always four entries, in this fixed order:
+Entries appear in this fixed order. New checks are appended (never reordered):
 
 1. `"well-known"` — root `/.well-known/x402` manifest probe
 2. `"challenge"` — 402 challenge structure probe (uses `--endpoint` URL when supplied)
 3. `"self-payment"` — payer ≠ payTo guard (informational when `--payer-hint` absent)
-4. `"indexing"` — CDP discovery query
+4. `"indexing"` — CDP discovery query (`/v2/x402/discovery/resources?payTo=...`)
+5. `"propagation"` — metadata propagation diff (X402-45 / D.2, ADR-004)
+6. `"host-pollution"` — CDP merchant discovery multi-host listing-hygiene warning (X402-53 / L, ADR-008)
 
 Each entry is a `CheckResult`:
 
@@ -48,14 +50,40 @@ Each entry is a `CheckResult`:
 
 These fields are present when the check fires the corresponding code path. Consumers should treat `detail` as additive — never assume absence means "not applicable"; always check for key presence.
 
-| Check       | Detail keys                                                                                  |
-| ----------- | -------------------------------------------------------------------------------------------- |
-| `well-known` | `issues[]` (when status=fail), `httpStatus` (when status=fail and HTTP error)              |
-| `challenge`  | `httpStatus` (when fetch fails), `missingFields[]` + `variant` (when extensions.bazaar fail) |
-| `self-payment` | (no detail fields today)                                                                   |
-| `indexing`   | `queryUrl`, `status` (one of `"indexed" \| "processing" \| "not_found" \| "error"`), `count` (when indexed), `httpStatus` (when HTTP error) |
+| Check            | Detail keys                                                                                                                                                                                                          |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `well-known`     | `issues[]` (when status=fail), `httpStatus` (when status=fail and HTTP error)                                                                                                                                        |
+| `challenge`      | `httpStatus` (when fetch fails), `missingFields[]` + `variant` (when extensions.bazaar fail)                                                                                                                         |
+| `self-payment`   | (no detail fields today)                                                                                                                                                                                             |
+| `indexing`       | `queryUrl`, `status` (one of `"indexed" \| "processing" \| "not_found" \| "error"`), `count` (when indexed), `httpStatus` (when HTTP error), `indexer_state` (`"indexed" \| "processing" \| "unknown" \| "not_applicable_non_cdp"`) |
+| `propagation`    | `queryUrl`, `metadata_propagation` (`"ok" \| "partial" \| "missing" \| "unknown" \| "not_applicable_non_cdp"`), `diff[]` (when partial/missing), `httpStatus` (when HTTP error)                                                                |
+| `host-pollution` | `queryUrl`, `state` (`"no_pollution" \| "polluted" \| "unknown" \| "not_applicable_non_cdp"`), `polluted_paths[]` (when polluted), `polluted_path_count` (when polluted), `total_entries`, `distinct_hosts`, `httpStatus` (when HTTP error)            |
 
 The `challenge.detail.variant` field carries the detected discovery-extension variant (`"mcp-discovery"` \| `"body-discovery"` \| `"unknown"`) on failed validations. See ADR-004 Pillar 3 for the variant model.
+
+### `host-pollution` facet shape (X402-53 / L, ADR-008)
+
+The `host-pollution` check returns `status: "info"` when CDP's merchant discovery (`/platform/v2/x402/discovery/merchant?payTo=<addr>&limit=50`) shows the same resource path indexed under more than one hostname for the operator's payTo. **The verdict synthesizer does NOT include `host-pollution` in its upstream-checks set** — `looks_correct` continues to roll up to exit code 0 even when this facet fires. Code is correct; ops are leaky.
+
+When `state === "polluted"`, the facet carries:
+
+```jsonc
+{
+  "state": "polluted",
+  "polluted_paths": [
+    {
+      "resource_path": "/v1/anchor",
+      "hosts": ["api.example.com", "gateway.example.com"]
+    }
+    // ... more polluted paths, sorted ascending by resource_path; hosts sorted ascending per entry
+  ],
+  "polluted_path_count": 9,
+  "total_entries": 25,
+  "distinct_hosts": 3
+}
+```
+
+Operator remediation: configure CDN/Lambda to canonicalize to one host. CDP captures the URL the buyer hit (not the canonical resource URL), so when multiple hostnames front the same handler, the merchant index shows duplicate entries per path. See [ADR-008](../../DECISIONS.md#adr-008) for the design rationale.
 
 ## `verdict` — the discriminated union
 
@@ -110,20 +138,13 @@ Pre-major-bump steps:
 
 ## Regenerating the snapshot fixture
 
-When the JSON shape is intentionally changing (additive OR shape-breaking), regenerate the fixture:
+When the JSON shape is intentionally changing (additive OR shape-breaking), regenerate the fixture using the dedicated script:
 
 ```bash
-# Option A — hand-edit if you know the exact new shape
-$EDITOR tests/fixtures/bazaar/json-api-snapshot.json
-
-# Option B — capture from a live deterministic run (recommended)
-pnpm tsx -e '
-  import { runBazaarCheck } from "./src/bazaar/index.js";
-  // ... wire up the deterministic fetcher from the test file ...
-  const report = await runBazaarCheck({...});
-  console.log(JSON.stringify(report, null, 2));
-' > tests/fixtures/bazaar/json-api-snapshot.json
+pnpm tsx tests/fixtures/bazaar/regenerate-json-api-snapshot.ts
 ```
+
+The script wires up the same deterministic fetcher used by the test, runs `runBazaarCheck`, and writes the result to `tests/fixtures/bazaar/json-api-snapshot.json`. Keep the script's fetcher in lockstep with the test's `deterministicFetcher` — if you add a new mock URL pattern in the test, mirror it in the script.
 
 Then add a `### JSON API` entry to `CHANGELOG.md` `[Unreleased]` documenting:
 

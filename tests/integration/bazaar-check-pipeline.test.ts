@@ -69,6 +69,7 @@ function buildFetcher(
     wellKnown?: () => Response;
     challenge?: () => Response;
     discovery?: () => Response;
+    discoveryMerchant?: () => Response;
   } = {},
 ): typeof fetch {
   return ((urlInput: string) => {
@@ -77,6 +78,17 @@ function buildFetcher(
       return Promise.resolve(
         responses.wellKnown?.() ??
           jsonResponse({ name: "Weather API", description: "Forecasts", accepts: [] }),
+      );
+    }
+    if (url.includes("discovery/merchant")) {
+      // X402-53 (L) — host-pollution queries merchant endpoint.
+      // Default: single host, no pollution.
+      return Promise.resolve(
+        responses.discoveryMerchant?.() ??
+          jsonResponse({
+            pagination: { limit: 50, offset: 0, total: 1 },
+            resources: [{ resource: "https://api.example.com/api/weather" }],
+          }),
       );
     }
     if (url.includes("discovery/resources")) {
@@ -99,7 +111,7 @@ function buildFetcher(
 }
 
 describe("bazaar-check pipeline (hermetic)", () => {
-  it("returns exit 0 + looks_correct when all five checks pass", async () => {
+  it("returns exit 0 + looks_correct when all six checks pass", async () => {
     const stdout = captureStream();
     const stderr = captureStream();
     const code = await runBazaarCheckCommand(
@@ -114,12 +126,14 @@ describe("bazaar-check pipeline (hermetic)", () => {
     expect(code).toBe(0);
     const out = JSON.parse(stdout.buf.join(""));
     expect(out.verdict.kind).toBe("looks_correct");
+    // X402-53 (L) — host-pollution appended as 6th check (additive per ADR-008).
     expect(out.results.map((r: { check: string }) => r.check)).toEqual([
       "well-known",
       "challenge",
       "self-payment",
       "indexing",
       "propagation",
+      "host-pollution",
     ]);
   });
 

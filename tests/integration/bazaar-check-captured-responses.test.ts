@@ -40,6 +40,14 @@ interface CapturedResponseFixture {
     readonly "well-known": { readonly status: number; readonly body: unknown };
     readonly challenge: { readonly status: number; readonly body: unknown };
     readonly discovery: { readonly status: number; readonly body: unknown };
+    /**
+     * X402-53 (L) — optional mock for the CDP merchant discovery
+     * endpoint queried by `checkHostPollution`. When absent, the
+     * `discovery` mock is reused as fallback; existing fixtures stay
+     * unchanged because the host-pollution check tolerates non-resources
+     * bodies as `unknown` state.
+     */
+    readonly "discovery-merchant"?: { readonly status: number; readonly body: unknown };
   };
   readonly expected: {
     readonly verdict:
@@ -71,11 +79,20 @@ function loadFixtures(): Array<{ filename: string; fixture: CapturedResponseFixt
 function fixtureFetcher(fixture: CapturedResponseFixture): typeof fetch {
   return ((urlInput: string) => {
     const url = String(urlInput);
-    const mock = url.endsWith("/.well-known/x402")
-      ? fixture.mocks["well-known"]
-      : url.includes("discovery/resources")
-        ? fixture.mocks["discovery"]
-        : fixture.mocks["challenge"];
+    let mock: { status: number; body: unknown };
+    if (url.endsWith("/.well-known/x402")) {
+      mock = fixture.mocks["well-known"];
+    } else if (url.includes("discovery/merchant")) {
+      // X402-53 (L) — host-pollution check queries the merchant discovery
+      // endpoint. Fall back to the `discovery` mock when a fixture predates
+      // X402-53 and doesn't supply a separate `discovery-merchant` mock;
+      // the host-pollution check tolerates non-resources bodies as `unknown`.
+      mock = fixture.mocks["discovery-merchant"] ?? fixture.mocks["discovery"];
+    } else if (url.includes("discovery/resources")) {
+      mock = fixture.mocks["discovery"];
+    } else {
+      mock = fixture.mocks["challenge"];
+    }
     return Promise.resolve(
       new Response(JSON.stringify(mock.body), {
         status: mock.status,
