@@ -9,7 +9,11 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-v0.3.4 cycle. L (host_pollution) via PR #101; K (payment-payload echo gap) via PR #102; G (facilitator-fitness) via PR #103. **I (service_unreachable + probe-history state) ships here — the final v0.3.4 ticket.** v0.3.4 release follows.
+—
+
+## [0.3.4] — 2026-05-30
+
+v0.3.4 cycle complete: four committed items shipped across L + K + G + I. `bazaar-check` grows from 5 checks to 8: host-pollution (L, [#101](https://github.com/fardinvahdat/x402trace/pull/101)), payment-payload echo gap rule pair with new `upstream_stuck.cause` discriminator (K, [#102](https://github.com/fardinvahdat/x402trace/pull/102)), facilitator-fitness per-rail probe with declared-identity-first attribution (G, [#103](https://github.com/fardinvahdat/x402trace/pull/103)), and the first top-level new verdict since v0.3.2 — `service_unreachable` with multi-probe consensus + per-cause windows + the first stateful event discriminant in x402trace (I, [#104](https://github.com/fardinvahdat/x402trace/pull/104) + determinism fix [#105](https://github.com/fardinvahdat/x402trace/pull/105)). ADRs 005 / 006 / 007 / 008 record the architectural decisions. JSON API X402-44 contract preserved across all four additions — every shape change is strictly additive. Cohort: 4 named external contributors credited (@hypeprinter007-stack / Ferj 🙏, @RipperMercs 🙏, @TKCollective 🙏, @AsaiShota 🙏) plus 5 additional named voices behind the design refinements (@Cryptor, @TomSmart_ai, @Cinderwright, @evanatpizzarobot, @poteshniy).
 
 ### Added (I — X402-52)
 
@@ -456,7 +460,8 @@ The v0.1 wedge: a local proxy + timeout-reconciliation engine that catches the c
 
 ---
 
-[Unreleased]: https://github.com/fardinvahdat/x402trace/compare/v0.3.3...HEAD
+[Unreleased]: https://github.com/fardinvahdat/x402trace/compare/v0.3.4...HEAD
+[0.3.4]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.3.4
 [0.3.3]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.3.3
 [0.3.2]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.3.2
 [0.3.1]: https://github.com/fardinvahdat/x402trace/releases/tag/v0.3.1
