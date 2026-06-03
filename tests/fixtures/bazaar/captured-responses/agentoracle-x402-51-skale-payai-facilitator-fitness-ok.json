@@ -1,0 +1,134 @@
+{
+  "$comment": "X402-51 (G, ADR-005) — SKALE + PayAI single-rail facilitator-fitness acceptance fixture. Contributor: TKCollective (AgentOracle, https://agentoracle.co). Closes the SKALE+PayAI commitment from #103 (https://github.com/fardinvahdat/x402trace/pull/103#issuecomment) targeting end-of-week 2026-06-05/06; landed early on 2026-06-03 ahead of the AgentOracle SKALE Developer Showcase (2026-06-04, 09:30 PT, streamyard.com/z5q2kcdcui). Tests G's per-rail facet emission on a non-CDP rail: AgentOracle's /deep-research/skale declares extensions.bazaar.facilitator: payai; the registry probe resolves payai → https://facilitator.payai.network/supported which returns 200 + an eip155:1187947933 entry in kinds[], so fitness collapses to ok. Per ADR-005 the identity source must be the declared facilitator field, not tx-from inference — load-bearing here because SKALE is gasless and the on-chain tx originates from the facilitator's settler key, not the merchant's payTo, so any tx-from inference would mis-attribute the rail. The looks-correct merchant manifest in mocks below is the X402-51 commitment shape for AgentOracle's SKALE rail; the real on-chain anchors (PayAI facilitator, settle tx, block, chainId) are reproduced verbatim from production captures on 2026-06-03 (settle tx 0x9b5cf04dda211d3bae1218e9b5ebecd17119b6f28372714056b774b47103e875 on SKALE Base block-explorer https://skale-base.blockscout.com/tx/0x9b5cf04dda211d3bae1218e9b5ebecd17119b6f28372714056b774b47103e875 + prior anchor 0x809361edad3ea6aebfacea978c6d6acf8cb32f7f03e4b5d13ee070e00c9f8e42 block 1925417). Pair-completes the multi-rail CDP fixture (anchor-x402-facilitator-fitness-ok-multi-rail.json) by exercising the same G probe against a non-CDP rail end-to-end. Receipt-spec cross-reference: https://github.com/TKCollective/agentoracle-receipt-spec/tree/v0.3-binary-halt (v_recommendation / v_gate / v_gate_mapping ride alongside the rail, not at the rail layer).",
+  "scenario": "agentoracle-x402-51-skale-payai-facilitator-fitness-ok",
+  "input": {
+    "serviceUrl": "https://agentoracle.co/deep-research/skale",
+    "chain": "skale-base"
+  },
+  "mocks": {
+    "well-known": {
+      "status": 200,
+      "body": {
+        "x402Version": 2,
+        "name": "AgentOracle Verification API",
+        "description": "Pay-per-query verification API for AI agents. /deep-research/skale exposes the gasless SKALE Base rail via PayAI facilitator.",
+        "seller": {
+          "name": "AgentOracle",
+          "operator": "TKCollective LLC",
+          "homepage": "https://agentoracle.co",
+          "contact": "joe@agentoracle.co",
+          "jwks": "https://agentoracle.co/.well-known/jwks.json"
+        },
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:1187947933",
+            "asset": "0x85889c8c714505E0c94b30fcfcF64fE3Ac8FCb20",
+            "amount": "100000",
+            "payTo": "0xdF90200B0031051BbF7a66BB9387d2Ecf599e109",
+            "maxTimeoutSeconds": 300,
+            "extra": { "name": "Bridged USDC (SKALE Bridge)", "version": "2" }
+          }
+        ],
+        "extensions": {
+          "bazaar": {
+            "name": "AgentOracle Verification API — SKALE rail",
+            "description": "Gasless multi-source deep analysis on SKALE Base via PayAI facilitator.",
+            "facilitator": "payai"
+          }
+        }
+      }
+    },
+    "challenge": {
+      "status": 402,
+      "body": {
+        "x402Version": 2,
+        "error": "Payment required",
+        "resource": {
+          "url": "https://agentoracle.co/deep-research/skale",
+          "description": "Load when an agent on SKALE Network needs gasless multi-source deep analysis. Same backend as /deep-research. Powered by Sonar Pro. $0.10 USDC per query on SKALE.",
+          "mimeType": "application/json"
+        },
+        "accepts": [
+          {
+            "scheme": "exact",
+            "network": "eip155:1187947933",
+            "amount": "100000",
+            "asset": "0x85889c8c714505E0c94b30fcfcF64fE3Ac8FCb20",
+            "payTo": "0xdF90200B0031051BbF7a66BB9387d2Ecf599e109",
+            "maxTimeoutSeconds": 300,
+            "extra": { "name": "Bridged USDC (SKALE Bridge)", "version": "2" }
+          }
+        ],
+        "extensions": {
+          "bazaar": {
+            "name": "AgentOracle Verification API — SKALE rail",
+            "description": "Gasless multi-source deep analysis on SKALE Base via PayAI facilitator.",
+            "facilitator": "payai"
+          }
+        }
+      }
+    },
+    "discovery": {
+      "status": 200,
+      "body": {
+        "resources": [
+          {
+            "resource": "https://agentoracle.co/deep-research/skale",
+            "name": "AgentOracle Verification API — SKALE rail",
+            "description": "Gasless multi-source deep analysis on SKALE Base via PayAI facilitator."
+          }
+        ]
+      }
+    },
+    "facilitator-verify": {
+      "status": 200,
+      "body": {
+        "$source": "https://facilitator.payai.network/supported — verified live on 2026-06-03; truncated to the rails relevant to this fixture",
+        "kinds": [
+          { "x402Version": 1, "scheme": "exact", "network": "base" },
+          { "x402Version": 2, "scheme": "exact", "network": "eip155:1187947933" }
+        ]
+      }
+    }
+  },
+  "expected": {
+    "verdict": "looks_correct",
+    "exitCode": 0,
+    "facets": {
+      "facilitator-fitness.facilitator_fitness.summary.ok": 1,
+      "facilitator-fitness.facilitator_fitness.summary.degraded": 0,
+      "facilitator-fitness.facilitator_fitness.summary.unreachable": 0,
+      "facilitator-fitness.facilitator_fitness.summary.unknown": 0,
+      "facilitator-fitness.facilitator_fitness.rails.0.network": "eip155:1187947933",
+      "facilitator-fitness.facilitator_fitness.rails.0.facilitator": "payai",
+      "facilitator-fitness.facilitator_fitness.rails.0.identity_source": "declared",
+      "facilitator-fitness.facilitator_fitness.rails.0.fitness": "ok"
+    }
+  },
+  "production_anchors": {
+    "$comment": "Real on-chain settles produced by AgentOracle's /deep-research/skale endpoint against PayAI facilitator on 2026-06-03. Reproducible by any verifier; provided here as evidence the looks-correct manifest above corresponds to a live, paying rail.",
+    "chainId": 1187947933,
+    "chainName": "SKALE Base",
+    "rpc": "https://skale-base.skalenodes.com/v1/base",
+    "explorer": "https://skale-base.blockscout.com",
+    "usdc_e": "0x85889c8c714505E0c94b30fcfcF64fE3Ac8FCb20",
+    "payTo": "0xdF90200B0031051BbF7a66BB9387d2Ecf599e109",
+    "facilitator": "https://facilitator.payai.network",
+    "settle_anchors": [
+      {
+        "tx": "0x9b5cf04dda211d3bae1218e9b5ebecd17119b6f28372714056b774b47103e875",
+        "amount_micro_usdc_e": "100000",
+        "captured_at": "2026-06-03",
+        "url": "https://skale-base.blockscout.com/tx/0x9b5cf04dda211d3bae1218e9b5ebecd17119b6f28372714056b774b47103e875"
+      },
+      {
+        "tx": "0x809361edad3ea6aebfacea978c6d6acf8cb32f7f03e4b5d13ee070e00c9f8e42",
+        "block": 1925417,
+        "amount_micro_usdc_e": "100000",
+        "captured_at": "2026-05-26",
+        "url": "https://skale-base.blockscout.com/tx/0x809361edad3ea6aebfacea978c6d6acf8cb32f7f03e4b5d13ee070e00c9f8e42"
+      }
+    ]
+  }
+}
