@@ -44,7 +44,7 @@ jobs:
           run_install: false
 
       - name: Setup Node 20 + npm registry for publish
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: "20"
           cache: pnpm
